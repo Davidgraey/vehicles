@@ -1,6 +1,6 @@
 from setuptools import setup
 
-setup(name='package_name', packages=['package_name'])
+setup(name='vehicles', packages=['vehicles'])
 
 # setup(name='package name',
 #       version='0.0.1.dev1',

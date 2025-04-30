@@ -5,7 +5,7 @@ build-backend = "setuptools.build_meta"
 dynamic = ["version"]
 
 [project]
-name = "example_package"
+name = "vehicles"
 authors = [
   {name = "David Graey", email = "graeyband@gmail.com" },
 ]
@@ -15,7 +15,8 @@ readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "matplotlib",
-    "dvc"
+    "dvc",
+    "numpy"
 ]
 
 
@@ -30,6 +31,7 @@ classifiers = [
 ]
 
 keywords = ["good", "stuff"]
+
 
 
 [project.urls]

@@ -225,7 +225,7 @@ def softmax_derivative(x: NDArray) -> NDArray:
     -------
     evaluation
     """
-
+    # np.diag(x) - np.outer(x, x)
     return -np.outer(x, x) + np.diag(x.flatten())
 
     #s = 1-x * x

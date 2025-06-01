@@ -7,10 +7,10 @@ dynamic = ["version"]
 [project]
 name = "vehicles"
 authors = [
-  {name = "David Graey", email = "graeyband@gmail.com" },
+    { name = "David Graey", email = "graeyband@gmail.com" },
 ]
 
-description = "fill in a description"
+description = "Modeling biological behavior using Reinforcement Learning and Braitenberg autonomous vehicles as framework""
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
@@ -21,7 +21,7 @@ dependencies = [
 
 
 [project.optional-dependencies]
-gui=["matplotlib.pyplot"]
+gui = ["matplotlib.pyplot"]
 
 classifiers = [
     "Development Status :: Development Pre-Release",
@@ -30,12 +30,9 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 
-keywords = ["good", "stuff"]
-
+keywords = []
 
 
 [project.urls]
-"Homepage" = "https://github.com/pypa/sampleproject"
-"Repository" = "https://github.com/me/spam.git"
-"Changelog" = "https://github.com/me/spam/blob/master/CHANGELOG.md"
-"Bug Tracker" = "https://github.com/pypa/sampleproject/issues"
+"Repository" = ""
+"Changelog" = ""

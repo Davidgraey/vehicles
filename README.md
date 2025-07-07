@@ -1,12 +1,21 @@
-# Example Package
+# Vehicles
+Just getting going with this --
+Based on Braitenberg's Vehicles concept, this is a libray containing some 
+specific flavors of neural network architecutres, simulated environemnts 
+and entity objects
 
-This is a simple example package.
-[Github-flavored Markdown](https://guides.github.com/features/mastering-markdown/)
+## Entity
+- Entity holds the vehicle-specific classes, operations and processes, 
+  including the entity definition, senses, and actions
 
-https://packaging.python.org/en/latest/tutorials/packaging-projects/
+## World
+- World holds the pygame visualization, step update
+- For now, I just dumped in the pygame froggerbot implementation -- it's 
+  super messy.
 
-https://packaging.python.org/en/latest/tutorials/creating-documentation/
-
+## nnets
+- (we may move this to the Neural Webs package to make it cleaner)
+- For now, holds the network strucutres, optimizers, layers, etc.
 
 # Visuals & Diagrams
 https://mermaid.js.org/config/Tutorials.html

@@ -109,29 +109,39 @@ def network_sgd_momentum(incoming_x, incoming_t,
 
 LAMBDA_MAX = 1e24
 LAMBDA_MIN =  1e-24
-# TODO: model with a calculate_gradient() func --
 def scaled_conjugate_gradient(model: BasalModel,
                               x_data: NDArray,
                               y_data: NDArray,
                               iterations: int) -> NDArray:
     """
     This implementation is based on Charles Anderson's (Colorado State
-    University) SCG method --
-    It is a 'destructive' -- weights are adjusted as we take steps down the
-    gradient. Use with caution!
+    University) SCG method
+
+    Use with caution  -- weights are adjusted as we take steps down the
+    gradient; if you don't account for those object updates, you might have a
+    nasty surprise
+
     Requres a model object with specific methods implemented, hence the
-    BasalModel class.
+    BasalModel class --
 
     Parameters
     ----------
-    model : BasalModel
-    x_data :
-    y_data :
-    iterations :
+    model : BasalModel -- relies on the model object to be of BasalModel
+        class- we need methods for
+                model.get_weights(),
+                model.calculate_gradients()
+                model.calculate_loss()
+        and for the model.weights to be accessible / settable
+
+    x_data : input data
+    y_data : labels
+    iterations : maximum number of SCG steps to take down this gradient
 
     Returns
     -------
-
+    final optimized weights resultant from scaled cojugate descent.
+        These values can be directly used, or combined with a learning rate
+        to slow convergence
     """
     sigma_zero = 1e-6
     lamb = 1e-6
@@ -152,12 +162,12 @@ def scaled_conjugate_gradient(model: BasalModel,
             success = False
             sigma = sigma_zero / np.sqrt(mu)
 
-            grad_old, _ = model._calculate_gradients(x_data, y_data)
+            grad_old, _ = model.calculate_gradients(x_data, y_data)
             grad_old = grad_old.reshape(-1, 1)
 
             # update our model's weights -- (take a step down the gradient)
             model.weights = (vector + (sigma * grad)).reshape(model._weight_shape)
-            grad_step, _ = model._calculate_gradients(x_data, y_data)
+            grad_step, _ = model.calculate_gradients(x_data, y_data)
 
             step = (grad_old - grad_step.reshape(-1, 1)) / sigma
             delta = grad.T @ step
@@ -177,11 +187,11 @@ def scaled_conjugate_gradient(model: BasalModel,
         phi = grad.T @ r
         alpha = phi / delta
         vector_new = vector + alpha * grad
-        loss_old = model._calculate_loss(x_data, y_data)
+        loss_old = model.calculate_loss(x_data, y_data)
 
         # update our model's weights -- (take a step down the gradient)
         model.weights = vector_new.copy().reshape(model._weight_shape)
-        loss_new = model._calculate_loss(x_data, y_data)
+        loss_new = model.calculate_loss(x_data, y_data)
 
         comparison = 2 * delta * (loss_old - loss_new) / (phi ** 2)
 
@@ -192,12 +202,12 @@ def scaled_conjugate_gradient(model: BasalModel,
 
             # update our model's weights -- (take a step down the gradient)
             model.weights = vector_new.copy().reshape(model._weight_shape)
-            r_new, _ = model._calculate_gradients(x_data, y_data)
+            r_new, _ = model.calculate_gradients(x_data, y_data)
             r_new = -1 * r_new.reshape(-1, 1)
             success = True
             lamb_ = 0
 
-            if _i % model._weight_shape[0] == 0:
+            if _i % model.weight_shape[0] == 0:
                 grad_new = r_new
             else:
                 beta = ((r_new.T @ r_new) - (r_new.T @ r)) / phi

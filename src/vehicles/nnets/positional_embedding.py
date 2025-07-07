@@ -40,7 +40,7 @@ class RopeEmbedding:
 
         Returns
         -------
-        the rotation matrix - this can be persisted and reused :D
+        the rotation matrix - this can be persisted and reused
         """
         inv_freq = 1.0 / (base_freq ** (
                 np.arange(0, embedding_dimension, 2) / embedding_dimension
@@ -59,7 +59,7 @@ class RopeEmbedding:
         Some basic assumptions: Data in input data is structured:
         1) Dimensions are: (num_samples, sequence_length,embedding_dimension)
         2) both sequence_length and embedding dimension are the same as
-        those used to iniitalize this embedding object.
+            those used to iniitalize this embedding object.
 
         Parameters
         ----------

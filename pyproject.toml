@@ -10,13 +10,14 @@ authors = [
     { name = "David Graey", email = "graeyband@gmail.com" },
 ]
 
-description = "Modeling biological behavior using Reinforcement Learning and Braitenberg autonomous vehicles as framework""
+description = "Modeling biological behavior using Reinforcement Learning and Braitenberg autonomous vehicles as framework"
 readme = "README.md"
 requires-python = ">=3.10"
 dependencies = [
     "matplotlib",
     "dvc",
-    "numpy"
+    "numpy",
+    "pygame"
 ]
 
 

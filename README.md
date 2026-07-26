@@ -13,10 +13,6 @@ and entity objects
 - For now, I just dumped in the pygame froggerbot implementation -- it's 
   super messy.
 
-## nnets
-- (we may move this to the Neural Webs package to make it cleaner)
-- For now, holds the network strucutres, optimizers, layers, etc.
-
 # Visuals & Diagrams
 https://mermaid.js.org/config/Tutorials.html
 ```mermaid

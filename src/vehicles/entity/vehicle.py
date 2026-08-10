@@ -1,3 +1,4 @@
+import numpy as np
 from vehicles.entity.base_object import BaseObject
 from vehicles.entity.angles import Angle, AngularType
 from vehicles.entity.senses import SensorType, SensorShape, Sense
@@ -9,10 +10,60 @@ class Vehicle(BaseObject):
                  position: tuple[int, int],
                  size: tuple[int, int],
                  facing_point: tuple[int, int],
-                 sense:Sense):
+                 sense:Sense,
+                 is_controlled: bool = True
+                 ):
         super().__init__(mass=mass, position=position, size=size, facing_point=facing_point)
 
         self.sense = sense
+        self.is_controlled = is_controlled
+
+    def perceive(self, instance_objects: list):
+        """ proxy for the sense object directly """
+        return self.sense.perceive(self, instance_objects)
+
+    def _get_sensor_render(self) -> np.ndarray:
+        """Returns an Nx2 numpy array of vertices for the sensor shape."""
+        half_fov = self.sense.field_of_view.value / 2.0
+        n_points = 32  # Adjust for smoothness vs performance
+
+        # Define angular span based on shape
+        if self.sense.shape == SensorShape.OMNI:
+            angles = np.linspace(0, 2 * np.pi, n_points)
+        else:
+            angles = np.linspace(-half_fov, half_fov, n_points)
+
+        base_r = self.sense.range
+
+        # Shape-specific radius profiles
+        if self.sense.shape == SensorShape.CONE:
+            radii = np.full_like(angles, base_r)
+        elif self.sense.shape == SensorShape.CARDIOID:
+            # Polar cardioid: r = R * (1 + cos(θ)) / 2
+            radii = base_r * (1 + np.cos(angles)) / 2.0
+        elif self.sense.shape == SensorShape.BILOBED:
+            # Polar bi-lobed: r = R * (1 + cos(2θ)) / 2
+            radii = base_r * (1 + np.cos(2 * angles)) / 2.0
+        elif self.sense.shape == SensorShape.OMNI:
+            radii = np.full_like(angles, base_r)
+        else:
+            radii = np.full_like(angles, base_r)
+
+        # Polar -> Cartesian (aligned with heading = 0)
+        rel_x = radii * np.cos(angles)
+        rel_y = radii * np.sin(angles)
+
+        self.heading.cast_as_radians()
+        heading_rad = self.heading.value
+
+        # Rotate by heading angle
+        cos_h, sin_h = np.cos(heading_rad), np.sin(heading_rad)
+        world_rel_x = rel_x * cos_h - rel_y * sin_h
+        world_rel_y = rel_x * sin_h + rel_y * cos_h
+
+        # Offset by parent position
+        return np.column_stack([self.position[0] + world_rel_x,
+                                self.position[1] + world_rel_y])
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
@@ -23,17 +74,23 @@ if __name__ == "__main__":
 
     sense_obj = Sense(type=SensorType.SIGHT,
                       shape=SensorShape.CONE,
-                      range=10,
-                      field_of_view=Angle(type=AngularType.RADIANS, value=0.5),
+                      range=15,
+                      field_of_view=Angle(type=AngularType.RADIANS, value=1.0),
                       noise=0.12,
-                      xray=False
+                      xray=False,
+                      falloff_exponent=1.0
                       )
 
+
+    object_a = BaseObject(mass=1, position=(20, 0), size=(2, 2), facing_point = (5, 5))
+    object_b = BaseObject(mass=1, position=(0, 20), size=(2, 2), facing_point=(-20, -25))
+
+    in_world = [object_a, object_b]
     ent = Vehicle(
         mass=2,
-        position=(-10.0, -10.0),
+        position=(0, 0),
         size=(5.0, 5.0),
-        facing_point=(4.0, 3.0),
+        facing_point=(4.0, 0.0),
         sense=sense_obj
     )
 
@@ -44,6 +101,7 @@ if __name__ == "__main__":
     positions.append(ent.position.copy())
     pointers.append(ent.facing_point.copy())
     bounding_boxes.append(ent.bounding_box.copy())
+    seen_states = [ent.perceive(in_world)]
 
     # Turn & move animation loop
     for i in range(18):
@@ -59,9 +117,12 @@ if __name__ == "__main__":
         ent.turn(_turn)
         ent.move()
 
+
+
         positions.append(ent.position.copy())
         pointers.append(ent.facing_point.copy())
         bounding_boxes.append(ent.bounding_box.copy())
+        seen_states.append(ent.perceive(in_world))
 
         print(f"Step {i}: pos={ent.position}, facing_point={ent.facing_point}, "
               f"heading={ent.heading.value:.4f} rad ({ent.direction.value:.2f}°)")
@@ -73,6 +134,7 @@ if __name__ == "__main__":
         pos = positions[i]
         h = pointers[i]
         bb = bounding_boxes[i]
+        seen = seen_states[i]
 
         # Draw position dot
         plt.plot(pos[0], pos[1], marker="o", color="blue", markersize=20)
@@ -82,6 +144,14 @@ if __name__ == "__main__":
 
         # Draw connection line
         plt.plot([pos[0], h[0]], [pos[1], h[1]], alpha=0.5, linewidth=2)
+
+        # seen -- controlled visual via alpha
+        print(seen)
+        for e_idx, _ob in enumerate(in_world):
+            c = ["red", "purple"]
+            ep = _ob.position
+            if seen[0][e_idx]:
+                plt.scatter(ep[0], ep[1], color=c[e_idx], s=35, alpha=1.0)
 
         # Draw bounding box corners
         if bb is not None:
@@ -93,8 +163,8 @@ if __name__ == "__main__":
 
         ax.set_title(f"Step {i + 1}: heading={ent.heading.value:.4f} rad")
         ax.set_aspect("equal")
-        ax.set_xlim(-20, 20)
-        ax.set_ylim(-20, 20)
+        ax.set_xlim(-30, 30)
+        ax.set_ylim(-30, 30)
 
     plt.tight_layout()
     plt.show()

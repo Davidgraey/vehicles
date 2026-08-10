@@ -46,7 +46,11 @@ class Angle:
     def __repr__(self):
         return f"Angle({self.type.value}, {self.value:.4f})"
 
-    def __sub__(self, other: Angle):
+    def __abs__(self):
+        """ Use carefully - this is an absolute value """
+        return np.abs(self.value)
+
+    def __sub__(self, other):
         if self.type == other.type:
             return normalize_angle(
                 Angle(type=self.type, value=self.value - other.value)
@@ -66,7 +70,7 @@ class Angle:
                           )
                 )
 
-    def __add__(self, other: Angle):
+    def __add__(self, other):
         if self.type == other.type:
             return normalize_angle(
                 Angle(type=self.type, value=self.value + other.value)
@@ -124,25 +128,42 @@ def angular_motion_to_cartesian(heading: Angle, speed: float) -> np.ndarray:
 
     return np.array([x_delta, y_delta])
 
-def normalize_angle(angle:Angle) -> float:
+def normalize_angle(angle:Angle) -> Angle:
     """Normalize angle to (-pi, pi], or -180 to 180"""
     # Wrap everything to [0, 2pi]
+    # Angle(type=self.type, value=self.value - other.value)
     if angle.type == AngularType.RADIANS:
-        rotated = (angle.value + np.pi) % TWOPI
-        rotated -= np.pi
+        rotated = Angle(
+            type=angle.type,
+            value=(
+                    (
+                        (angle.value + np.pi)
+                        % TWOPI)
+                        - np.pi
+            ) )
+
     elif angle.type == AngularType.DEGREES:
-        rotated = (angle.value + 180) % 360
-        rotated -= 180
+        rotated = Angle(
+            type=angle.type,
+            value=(
+                    (
+                            (angle.value + 180)
+                            % 360)
+                    - 180
+            ))
 
-    return Angle(angle.type, rotated)
+    return rotated
 
 
-def calculate_relative_angle(sensor_heading: Angle, target_angle: Angle) -> float:
+def calculate_relative_angle(sensor_heading: Angle, target_angle: Angle) -> Angle:
     """
     Calculate the signed angle difference between sensor heading and target.
     Returns angle in range [-pi, pi].
     """
-    return normalize_angle(target_angle - sensor_heading)
+    if isinstance(target_angle, float|int):
+        target_angle=Angle(AngularType.RADIANS, value=target_angle)
+    print(target_angle)
+    return normalize_angle(sensor_heading - target_angle)
 
 
 if __name__ == "__main__":

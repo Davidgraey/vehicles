@@ -12,7 +12,7 @@ authors = [
 
 description = "Modeling biological behavior using Reinforcement Learning and Braitenberg autonomous vehicles as framework"
 readme = "README.md"
-requires-python = ">=3.10"
+requires-python = ">=3.13"
 dependencies = [
     "matplotlib",
     "dvc",

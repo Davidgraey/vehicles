@@ -19,7 +19,7 @@ import numpy as np
 import pygame as pg
 
 from .renderer import Renderer
-from .vehicle import SimpleVehicle
+from .___vehicle import SimpleVehicle
 from .world import World
 
 

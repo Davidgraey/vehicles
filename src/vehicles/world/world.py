@@ -19,21 +19,20 @@ Usage (gym-like)::
         state = world.step(dt=1.0)   # autonomous; no action needed
         ...                          # render(state), log(state), etc.
 """
-from __future__ import annotations
-
 import copy
 from typing import List, Optional
-
 import numpy as np
 
-from .state import EntityState, WorldState
-from .vehicle import Vehicle
+from src.vehicles.world.state import EntityState, WorldState
+from src.vehicles.entity.angles import Angle, AngularType
+from src.vehicles.entity.base_object import BaseObject
+from src.vehicles.entity.vehicle import Vehicle
 
 
 class World:
     """Headless, steppable Braitenberg-vehicle environment."""
 
-    def __init__(self, width: int = 800, height: int = 600, seed: Optional[int] = None):
+    def __init__(self, width: int = 800, height: int = 600, controller: Optional = None, seed: Optional[int] = None):
         """
         Parameters
         ----------
@@ -46,37 +45,55 @@ class World:
         self.rng = np.random.default_rng(seed)
 
         self.tick = 0
-        self.entities: List[Vehicle] = []
+        self.entities: List[BaseObject] = []
+
+        self.controller = controller
 
         # Entities added before the first reset() form the initial population;
         # reset() restores exactly this set so runs are repeatable.
-        self._initial_entities: List[Vehicle] = []
+        self._initial_entities: List[BaseObject] = []
 
     # ------------------------------ population ------------------------------
-
-    def add_entity(self, vehicle: Vehicle) -> None:
+    def add_entity(self, entity: BaseObject) -> None:
         """Add a vehicle to the world and register it as part of the initial state."""
-        self.entities.append(vehicle)
-        self._initial_entities.append(copy.deepcopy(vehicle))
+        self.entities.append(entity)
+        self._initial_entities.append(copy.deepcopy(entity))
+
+    # ------------------------------ actions ------------------------------
+    def apply_commands(self, commands: dict):
+        for entity in self.entities:
+            if hasattr(entity, 'is_controlled'):
+                print("entity commands: ", commands)
+                _turn = Angle(AngularType.RADIANS, commands.get("turn", 0))
+                # pygame moves in CCW?
+                entity.turn(_turn)
+                entity.accelerate(commands.get("accelerate", 0))
+
+            entity.move()
+
+            print(self.entities)
 
     # ------------------------------ gym-like API ------------------------------
-
     def reset(self) -> WorldState:
         """Restore tick and the initial entity population; return the opening snapshot."""
         self.tick = 0
         self.entities = [copy.deepcopy(v) for v in self._initial_entities]
         return self.snapshot()
 
-    def step(self, dt: float = 1.0) -> WorldState:
-        """Advance the simulation by ``dt`` and return the resulting snapshot.
+    def step(self) -> WorldState:
+        """ key stepping """
+        if (self.controller is not None):
+            self.controller.process_events()
+            commands = self.controller.get_commands()
+        else:
+            commands = {'turn': 0.0, 'accelerate': 0.0}
 
-        Each entity drives itself (Braitenberg-style) inside its own ``step``;
-        the World then enforces bounds and advances the tick counter.
-        """
-        for vehicle in self.entities:
-            vehicle.step(dt, self)
+        # 2. Apply physics, update positions, etc. using `commands`
+        self.apply_commands(commands)
+
+        #3. apply bounds -- wrap the world
         self._apply_bounds()
-        self.tick += 1
+
         return self.snapshot()
 
     def snapshot(self) -> WorldState:
@@ -85,8 +102,9 @@ class World:
             EntityState(
                 id=v.id,
                 position=(float(v.position[0]), float(v.position[1])),
-                heading=float(v.heading),
+                facing_point=(float(v.facing_point[0]), float(v.facing_point[1])),
                 size=tuple(v.size),
+                sense_poly=v._get_sensor_render() if isinstance(v, Vehicle) else None
             )
             for v in self.entities
         )
@@ -100,7 +118,8 @@ class World:
     # ------------------------------ physics ------------------------------
 
     def _apply_bounds(self) -> None:
-        """Wrap entity positions toroidally so they never leave the world."""
+        """clip positions"""
         for v in self.entities:
-            v.position[0] %= self.width
-            v.position[1] %= self.height
+            v.position = np.clip(v.position, a_min=0, a_max = self.width)
+            v.facing_point = np.clip(v.facing_point, a_min=0, a_max = self.width+20)
+

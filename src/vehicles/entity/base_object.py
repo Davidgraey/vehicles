@@ -8,7 +8,7 @@ from dataclasses import dataclass
 
 def get_facing_angle(center_point: np.array, facing_point: np.array) -> Angle:
     """
-    From the center point and directional indicator facing point, return the angle
+    From the center point and directiget_facing_angleonal indicator facing point, return the angle
     Parameters
     ----------
     center_point : array, [x_coordinate, y_coordinate]
@@ -49,70 +49,50 @@ class BaseObject:
         # initialize position ----------------
         self.position: np.ndarray = np.array(position, dtype=np.float16)
         self.facing_point: np.ndarray = np.array(facing_point, dtype=np.float16)
-        self.velocity: np.ndarray = np.array([0.0, 0.0], dtype=np.float16)
+        self.velocity: float = 0.0
 
 
         # Constants ----------------
-        self.max_speed: float = 20.0  # 20 - defined by entity type
-        self.speed: float = 3.0  # 2 - defined by entity type - also the acceleration
+        self.max_speed: float = 10.0  # 20 - defined by entity type
+        self.speed: float = 0.2  # 2 - defined by entity type - also the acceleration
 
         # Constantly Updated Variables
-        self.old_speed = (0, 0)
+        self.old_speed = 0
         self.heading = get_facing_angle(self.position, self.facing_point)
         self.heading.cast_as_radians()
-
-    # ------------------------  Visualize ------------------------
-    # def render(self):
-    #     surface = pg.Surface(self.size)
-    #     surface = surface.fill(color=(0,0,0,0))
-    #     surface = self._draw_sense(surface)
-    #     surface = self._draw_self(surface)
-    #
-    #     # canvas.blit(self, self.position)
-    #     # canvas.blit(sprites, (self.x_position, self.y_position))  # draw single sprite
-    #     return surface, self.position
-    #
-    # def _draw_sense(self, surface):
-    #     # composite and return the sensory objects
-    #     # TODO: senses - build and draw
-    #
-    #     # example ----
-    #     pg.draw.circle(surface=surface,
-    #                    color=(255, 255, 0, 50),
-    #                    center=self.position,
-    #                    radius=max(self.size[0], self.size[1]) * 1.5,
-    #                    width=0)
-    #
-    #     return surface
-    #
-    # def _draw_self(self, surface):
-    #     # composite and return entity object
-    #     # example ----
-    #     pg.draw.circle(surface=surface,
-    #                    color=(255, 255, 0, 125),
-    #                    center=self.position,
-    #                    radius=max(self.size[0], self.size[1]) // 2,
-    #                    width=4, # width of > 0 - stroke
-    #                    draw_top_left=True)
-    #
-    #     # surface.blit()
-    #     return surface
 
     # ------------------------ MOVEMENT ------------------------
     def move(self) -> None:
         # move self.position by the x and y deltas
-        _delta = angular_motion_to_cartesian(self.heading, self.speed)
-        print("moving ", _delta, " units")
+        _delta = angular_motion_to_cartesian(self.heading, self.velocity)
         self.position += _delta
         self.facing_point += _delta
 
         return None
 
+    def accelerate(self, direction: float) -> None:
+        """
+        Direction will be +1, 0 or -1 to tell us which way we're moving
+        """
+        if direction == 0:
+            momentum = 0.95 #1 / self.mass
+            self.velocity *= momentum
+
+        else:
+            momentum = direction * (self.speed / self.mass)
+            self.velocity += momentum
+
+        self.velocity = np.clip(
+            self.velocity,
+            a_min=-(self.max_speed / 2),
+            a_max=self.max_speed
+        )
+
     def turn(self, angular_movement: Angle) -> None:
         if isinstance(angular_movement, (float | int)):
             angular_movement = Angle(AngularType.RADIANS, angular_movement)
 
-        self.heading = self.heading + angular_movement
+        self.heading = self.heading - angular_movement
 
         local_vector = self.facing_point - self.position
 
@@ -127,7 +107,6 @@ class BaseObject:
         self.facing_point = self.position + rotated_offset
 
         return None
-
 
     @property
     def bounding_box(self) -> np.ndarray:
@@ -172,7 +151,7 @@ class BaseObject:
         # angular direction in degrees
         return get_facing_angle(self.position, self.facing_point)
 
-    def check_collision(self, instance_objects: list[BaseObject,]) -> np.ndarray:
+    def check_collision(self, instance_objects: list) -> np.ndarray:
         # minx, miny, maxx, maxy
         corners_1 = self._colliders
         target_positions = np.array([t.position for t in instance_objects])
@@ -186,6 +165,44 @@ class BaseObject:
 
     def __repr__(self):
         return f'Object at {self.position} facing {self.direction} \n has mass of {self.mass} and is size {self.size}'
+
+
+ # ------------------------  Visualize ------------------------
+    # def render(self):
+    #     surface = pg.Surface(self.size)
+    #     surface = surface.fill(color=(0,0,0,0))
+    #     surface = self._draw_sense(surface)
+    #     surface = self._draw_self(surface)
+    #
+    #     # canvas.blit(self, self.position)
+    #     # canvas.blit(sprites, (self.x_position, self.y_position))  # draw single sprite
+    #     return surface, self.position
+    #
+    # def _draw_sense(self, surface):
+    #     # composite and return the sensory objects
+    #     # TODO: senses - build and draw
+    #
+    #     # example ----
+    #     pg.draw.circle(surface=surface,
+    #                    color=(255, 255, 0, 50),
+    #                    center=self.position,
+    #                    radius=max(self.size[0], self.size[1]) * 1.5,
+    #                    width=0)
+    #
+    #     return surface
+    #
+    # def _draw_self(self, surface):
+    #     # composite and return entity object
+    #     # example ----
+    #     pg.draw.circle(surface=surface,
+    #                    color=(255, 255, 0, 125),
+    #                    center=self.position,
+    #                    radius=max(self.size[0], self.size[1]) // 2,
+    #                    width=4, # width of > 0 - stroke
+    #                    draw_top_left=True)
+    #
+    #     # surface.blit()
+    #     return surface
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt

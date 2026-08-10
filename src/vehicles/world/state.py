@@ -7,7 +7,7 @@ references back into the World, so a snapshot is safe to render, log, or pickle
 without worrying about mutation mid-frame.
 """
 from dataclasses import dataclass
-from typing import Tuple
+from typing import Tuple, Optional
 
 
 @dataclass(frozen=True)
@@ -15,8 +15,9 @@ class EntityState:
     """Immutable pose of a single entity at one tick."""
     id: int
     position: Tuple[float, float]   # (x, y) center, world coordinates
-    heading: float                  # radians; 0 == +x, increasing counter-clockwise
+    facing_point: Tuple[float, float]
     size: Tuple[int, int]           # (width, height) for drawing
+    sense_poly: Optional[Tuple[int, int]] = None
 
 
 @dataclass(frozen=True)

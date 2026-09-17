@@ -2,6 +2,7 @@ import numpy as np
 from vehicles.entity.base_object import BaseObject
 from vehicles.entity.angles import Angle, AngularType
 from vehicles.entity.senses import SensorType, SensorShape, Sense
+from vehicles.entity.behaviors.instinct import Instinct
 
 
 class Vehicle(BaseObject):
@@ -11,21 +12,49 @@ class Vehicle(BaseObject):
                  size: tuple[int, int],
                  facing_point: tuple[int, int],
                  sense:Sense,
-                 is_controlled: bool = True
+                 is_controlled: bool = True,
+                 instinct: Instinct = None
                  ):
         super().__init__(mass=mass, position=position, size=size, facing_point=facing_point)
 
         self.sense = sense
         self.is_controlled = is_controlled
+        self.instinct = instinct  # Optional behavior system
+        self.detected_objects = []  # List of detected object positions
 
     def perceive(self, instance_objects: list):
-        """ proxy for the sense object directly """
-        return self.sense.perceive(self, instance_objects)
+        """ Call sense.perceive and track detected objects """
+        detected, strength = self.sense.perceive(self, instance_objects)
+
+        other_objects = [obj for obj in instance_objects if obj != self]
+        self.detected_objects = []
+
+        if len(detected) > 0:
+            for idx, is_detected in enumerate(detected):
+                if is_detected and idx < len(other_objects):
+                    self.detected_objects.append({
+                        'position': tuple(other_objects[idx].position),
+                        'strength': float(strength[idx])
+                    })
+
+        return detected, strength
+
+    def apply_motor_commands(self, turn: float = 0.0, accelerate: float = 0.0) -> None:
+        """
+        Apply motor commands. Source depends on control mode:
+          - controlled: use the provided (turn, accelerate) from the controller
+          - autonomous: ignore controller input entirely; use instinct if available
+        """
+        if not self.is_controlled:
+            turn, accelerate = self.instinct.evaluate(self, self.detected_objects) if self.instinct else (0.0, 0.0)
+
+        self.turn(Angle(AngularType.RADIANS, turn))
+        self.accelerate(accelerate)
 
     def _get_sensor_render(self) -> np.ndarray:
-        """Returns an Nx2 numpy array of vertices for the sensor shape."""
+        """returns nx2 numpy array of vertices for the sensor shape."""
         half_fov = self.sense.field_of_view.value / 2.0
-        n_points = 32  # Adjust for smoothness vs performance
+        n_points = 12
 
         # Define angular span based on shape
         if self.sense.shape == SensorShape.OMNI:
@@ -49,21 +78,47 @@ class Vehicle(BaseObject):
         else:
             radii = np.full_like(angles, base_r)
 
-        # Polar -> Cartesian (aligned with heading = 0)
-        rel_x = radii * np.cos(angles)
-        rel_y = radii * np.sin(angles)
+        # Polar -> Cartesian using arctan2(x, y) angle convention
+        # In arctan2(x, y): angle=0 points in +y, angle=π/2 points in +x
+        # Point at angle θ: (x, y) = (r*sin(θ), r*cos(θ))
+        rel_x = radii * np.sin(angles)
+        rel_y = radii * np.cos(angles)
 
+        # assure that our angles are in radians
         self.heading.cast_as_radians()
-        heading_rad = self.heading.value
+        # Negate heading to account for renderer's y-coordinate flip
+        heading_rad = -self.heading.value
 
-        # Rotate by heading angle
+        # Rotate by heading using standard 2D rotation matrix
         cos_h, sin_h = np.cos(heading_rad), np.sin(heading_rad)
         world_rel_x = rel_x * cos_h - rel_y * sin_h
         world_rel_y = rel_x * sin_h + rel_y * cos_h
 
-        # Offset by parent position
-        return np.column_stack([self.position[0] + world_rel_x,
-                                self.position[1] + world_rel_y])
+        base_vertices = np.column_stack([self.position[0] + world_rel_x,
+                                         self.position[1] + world_rel_y])
+
+        if self.sense.shape != SensorShape.OMNI:
+            edge_angles = np.array([-half_fov, half_fov])
+            edge_radii = np.full_like(edge_angles, base_r)
+
+            # Same arctan2(x, y) convention for edges
+            edge_rel_x = edge_radii * np.sin(edge_angles)
+            edge_rel_y = edge_radii * np.cos(edge_angles)
+
+            # Same rotation matrix for edges
+            edge_world_rel_x = edge_rel_x * cos_h - edge_rel_y * sin_h
+            edge_world_rel_y = edge_rel_x * sin_h + edge_rel_y * cos_h
+
+            edge_vertices = np.column_stack([self.position[0] + edge_world_rel_x,
+                                             self.position[1] + edge_world_rel_y])
+
+            # Insert at start/end to maintain correct angular ordering for polygon rendering
+            final_vertices = np.vstack([edge_vertices[0:1], base_vertices, edge_vertices[1:]])
+        else:
+            final_vertices = base_vertices
+
+        return final_vertices
+
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt

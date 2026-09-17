@@ -18,6 +18,7 @@ class EntityState:
     facing_point: Tuple[float, float]
     size: Tuple[int, int]           # (width, height) for drawing
     sense_poly: Optional[Tuple[int, int]] = None
+    has_detections: bool = False
 
 
 @dataclass(frozen=True)

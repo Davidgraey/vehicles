@@ -40,8 +40,10 @@ class Sense:
         if n_targets == 0:
             return np.array([]), np.array([])
 
+        other_objects = [obj for obj in instance_objects if obj != parent]
+
         # 1. Prepare Vectorized Data
-        target_positions = np.array([t.position for t in instance_objects])
+        target_positions = np.array([t.position for t in other_objects])
         parent_pos = parent.position
         parent_heading = parent.heading
 

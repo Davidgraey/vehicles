@@ -6,7 +6,7 @@ No knowledge of physics, sensors, or Braitenberg logic.
 import pygame
 import numpy as np
 from typing import Any, Protocol
-from src.vehicles.world.state import WorldState
+from vehicles.world.state import WorldState
 
 
 class DrawableEntity(Protocol):
@@ -17,11 +17,11 @@ class DrawableEntity(Protocol):
 class Renderer:
     """Draws `WorldState` snapshots to a pygame window."""
     def __init__(
-        self,
-        width: int = 800,
-        height: int = 800,
-        caption: str = "Braitenberg Vehicles",
-        background_color: str = "floralwhite",
+            self,
+            width: int = 800,
+            height: int = 800,
+            caption: str = "Braitenberg Vehicles",
+            background_color: str = "floralwhite",
     ):
         pygame.init()
         self.width, self.height = width, height
@@ -71,11 +71,10 @@ class Renderer:
         """Draw one entity as a body circle with a line marking its facing."""
         vertices = entity.sense_poly
         # Pygame expects list of (x, y) tuples
-        poly_points = [self._translate_to_pygame_coords(int(x), int(y)) for x, y in vertices]
+        polygon_points = [self._translate_to_pygame_coords(int(x), int(y)) for x, y in vertices]
 
-
-        color = pygame.Color(0, 255, 100, 32)
-        pygame.draw.polygon(self.screen, color, poly_points, 2)  # width=2 for outline
+        color = pygame.Color(255, 0, 0, 32) if entity.has_detections else pygame.Color(0, 255, 100, 32)
+        pygame.draw.polygon(self.screen, color, polygon_points, 2)  # width=2 for outline
 
     def handle_events(self, events: list[pygame.event.Event]) -> bool:
         """Process pygame events. Returns False if QUIT is requested."""
@@ -89,14 +88,14 @@ class Renderer:
         pygame.quit()
 
 if __name__ == "__main__":
-    # Main loop example (shows strict separation)
-    from src.vehicles.world.controller import InputController
-    from src.vehicles.world.world import World
-    from src.vehicles.world.state import WorldState, EntityState
-    from src.vehicles.entity.vehicle import Vehicle
-    from src.vehicles.entity.base_object import BaseObject
-    from src.vehicles.entity.angles import Angle, AngularType
-    from src.vehicles.entity.senses import Sense, SensorType, SensorShape
+    from vehicles.world.controller import InputController
+    from vehicles.world.world import World
+    from vehicles.world.state import WorldState, EntityState
+    from vehicles.entity.vehicle import Vehicle
+    from vehicles.entity.base_object import BaseObject
+    from vehicles.entity.angles import Angle, AngularType
+    from vehicles.entity.senses import Sense, SensorType, SensorShape
+    from vehicles.entity.behaviors.instinct import Instinct, gate_strength, evade
 
     record = []
 
@@ -106,15 +105,24 @@ if __name__ == "__main__":
 
     sight = Sense(type=SensorType.SIGHT,
                   shape=SensorShape.CONE,
-                  range=15,
+                  range=150,
                   field_of_view=Angle(type=AngularType.RADIANS, value=1.0),
                   noise=0.12,
                   xray=False,
-                  falloff_exponent=1.0
+                  falloff_exponent=1
                   )
 
-    controlled_vehicle  = Vehicle(
-        mass=1.2,
+    hearing = Sense(type=SensorType.HEARING,
+                  shape=SensorShape.OMNI,
+                  range=100,
+                  field_of_view=Angle(type=AngularType.RADIANS, value=6.28),
+                  noise=0.12,
+                  xray=True,
+                  falloff_exponent=1
+                  )
+
+    controlled_vehicle = Vehicle(
+        mass=2,
         position=(300, 300),
         size=(10, 10),
         facing_point=(310, 310),
@@ -122,14 +130,60 @@ if __name__ == "__main__":
         is_controlled=True
     )
 
+    evade_instinct = Instinct()
+    evade_instinct.add("evade", condition=gate_strength(0.01), action=evade)
+
+    evader_a = Vehicle(
+        mass=2,
+        position=(500, 300),
+        size=(10, 10),
+        facing_point=(510, 300),
+        sense=hearing,
+        is_controlled=False,
+        instinct=evade_instinct
+    )
+
+    evader_b = Vehicle(
+        mass=2,
+        position=(400, 500),
+        size=(10, 10),
+        facing_point=(410, 500),
+        sense=sight,
+        is_controlled=False,
+        instinct=evade_instinct
+    )
+
+    evader_c = Vehicle(
+        mass=10,
+        position=(600, 5250),
+        size=(15, 15),
+        facing_point=(410, 500),
+        sense=hearing,
+        is_controlled=False,
+        instinct=evade_instinct
+    )
+
+    evader_d = Vehicle(
+        mass=10,
+        position=(695, 588),
+        size=(15, 15),
+        facing_point=(410, 500),
+        sense=sight,
+        is_controlled=False,
+        instinct=evade_instinct
+    )
+
     other_obj = BaseObject(
         mass=10,
         position=(400, 400),
-        size=(20.0, 12.0),
+        size=(20, 12),
         facing_point=(400, 401),
     )
 
+    evader_a.max_speed, evader_b.max_speed, evader_c.max_speed, evader_d.max_speed = (5, 5, 5, 5)
+
     world.add_entity(controlled_vehicle)
+    world.add_entity([evader_a, evader_b, evader_c, evader_d])
     world.add_entity(other_obj)
 
     running = True
@@ -148,7 +202,7 @@ if __name__ == "__main__":
         # 1. Simulate (World knows nothing about pixels)
         state = world.step()
 
-        print("our vehicle: ", controlled_vehicle.position)
+        # print("our vehicle: ", controlled_vehicle.position)
 
         # 2. Visualize (Renderer knows nothing about physics)
         renderer.render(state)
@@ -156,7 +210,6 @@ if __name__ == "__main__":
         # 3. Cleanup and tick our clock
         clock.tick(30)
         record.append(state)
-
 
     renderer.close()
     print(len(record))

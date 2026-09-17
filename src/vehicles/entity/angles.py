@@ -162,7 +162,7 @@ def calculate_relative_angle(sensor_heading: Angle, target_angle: Angle) -> Angl
     """
     if isinstance(target_angle, float|int):
         target_angle=Angle(AngularType.RADIANS, value=target_angle)
-    print(target_angle)
+    # print(target_angle)
     return normalize_angle(sensor_heading - target_angle)
 
 

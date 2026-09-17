@@ -7,32 +7,25 @@ time. It imports only numpy -- no pygame, no display -- so it can be constructed
 and stepped in a headless process (tests, batch runs, neural-net training) where
 opening a window would be pointless or impossible.
 
-Rendering is deliberately somebody else's job: `World.step` returns an immutable
-`WorldState` snapshot, and the `Renderer` turns that into pixels. The two never
-share mutable state.
-
-Usage (gym-like)::
-
-    world = World(800, 600, seed=1)
-    world.reset()
-    while True:
-        state = world.step(dt=1.0)   # autonomous; no action needed
-        ...                          # render(state), log(state), etc.
 """
 import copy
 from typing import List, Optional
 import numpy as np
 
-from src.vehicles.world.state import EntityState, WorldState
-from src.vehicles.entity.angles import Angle, AngularType
-from src.vehicles.entity.base_object import BaseObject
-from src.vehicles.entity.vehicle import Vehicle
+from vehicles.world.state import EntityState, WorldState
+from vehicles.entity.base_object import BaseObject
+from vehicles.entity.vehicle import Vehicle
 
 
 class World:
     """Headless, steppable Braitenberg-vehicle environment."""
 
-    def __init__(self, width: int = 800, height: int = 600, controller: Optional = None, seed: Optional[int] = None):
+    def __init__(self,
+                 width: int = 800,
+                 height: int = 600,
+                 controller: Optional = None,
+                 seed: Optional[int] = None,
+                 verbose: bool = False):
         """
         Parameters
         ----------
@@ -48,30 +41,36 @@ class World:
         self.entities: List[BaseObject] = []
 
         self.controller = controller
+        self.verbose = verbose
 
         # Entities added before the first reset() form the initial population;
         # reset() restores exactly this set so runs are repeatable.
         self._initial_entities: List[BaseObject] = []
 
     # ------------------------------ population ------------------------------
-    def add_entity(self, entity: BaseObject) -> None:
+    def add_entity(self, entity: BaseObject|list[BaseObject]) -> None:
         """Add a vehicle to the world and register it as part of the initial state."""
-        self.entities.append(entity)
-        self._initial_entities.append(copy.deepcopy(entity))
+        if isinstance(entity, list):
+            for _e in entity:
+                self.entities.append(_e)
+                self._initial_entities.append(copy.deepcopy(_e))
+        else:
+            self.entities.append(entity)
+            self._initial_entities.append(copy.deepcopy(entity))
 
     # ------------------------------ actions ------------------------------
     def apply_commands(self, commands: dict):
         for entity in self.entities:
-            if hasattr(entity, 'is_controlled'):
-                print("entity commands: ", commands)
-                _turn = Angle(AngularType.RADIANS, commands.get("turn", 0))
-                # pygame moves in CCW?
-                entity.turn(_turn)
-                entity.accelerate(commands.get("accelerate", 0))
+            if hasattr(entity, 'sense'):
+                entity.perceive(self.entities)
+
+            if hasattr(entity, 'apply_motor_commands'):
+                entity.apply_motor_commands(
+                    turn=commands.get("turn", 0.0),
+                    accelerate=commands.get("accelerate", 0.0)
+                )
 
             entity.move()
-
-            print(self.entities)
 
     # ------------------------------ gym-like API ------------------------------
     def reset(self) -> WorldState:
@@ -98,13 +97,15 @@ class World:
 
     def snapshot(self) -> WorldState:
         """Build an immutable, pygame-free view of the current state."""
+
         entities = tuple(
             EntityState(
                 id=v.id,
                 position=(float(v.position[0]), float(v.position[1])),
                 facing_point=(float(v.facing_point[0]), float(v.facing_point[1])),
                 size=tuple(v.size),
-                sense_poly=v._get_sensor_render() if isinstance(v, Vehicle) else None
+                sense_poly=v._get_sensor_render() if isinstance(v, Vehicle) else None,
+                has_detections = len(v.detected_objects) > 0 if isinstance(v, Vehicle) else False
             )
             for v in self.entities
         )

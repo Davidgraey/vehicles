@@ -28,6 +28,7 @@ class Renderer:
         self.screen = pygame.display.set_mode((width, height))
         pygame.display.set_caption(caption)
         self.background = pygame.Color(background_color)
+        self.font = pygame.font.SysFont(None, 14)
 
     def render(self, state: WorldState) -> None:
         """Clear the screen, draw every entity, then present the frame."""
@@ -38,6 +39,12 @@ class Renderer:
             if entity.sense_poly is not None:
                 self._draw_senses(entity)
                 # self._draw_bounds(entity)
+            if entity.hunger is not None:
+                self._draw_stat_bar(entity, entity.hunger, 100, pygame.Color(255, 0, 0, 60))
+            if entity.food is not None and entity.max_food is not None:
+                self._draw_stat_bar(entity, entity.food, entity.max_food, pygame.Color(0, 200, 0, 60))
+            if entity.active_behavior:
+                self._draw_behavior_label(entity)
 
         pygame.display.flip()
 
@@ -46,7 +53,8 @@ class Renderer:
         return x_value, self.height - y_value
 
     def _draw_entity(self, entity: DrawableEntity) -> None:
-        """Draw one entity as a body circle with a line marking its facing."""
+        """Draw one entity's body (its own silhouette if it has one, else a
+        plain circle), with a line marking its facing."""
         x, y = self._translate_to_pygame_coords(entity.position[0],
                                                 entity.position[1]
                                                 )
@@ -54,18 +62,27 @@ class Renderer:
                                                               entity.facing_point[1]
                                                               )
 
-        # TODO; fix this entitysize is an x,y size.. needs refinement
-        radius = max(np.max(entity.size) // 2, 2)
+        # Colliding always wins, regardless of the entity's own color --
+        # it's a transient alert, not part of its identity
+        body_color = pygame.Color("orangered") if getattr(entity, "is_colliding", False) \
+            else pygame.Color(getattr(entity, "color", "steelblue"))
 
-        # Draw object
-        pygame.draw.circle(self.screen, pygame.Color("steelblue"), (int(x), int(y)), radius)
+        body_poly = getattr(entity, "body_poly", None)
+        if body_poly is not None:
+            polygon_points = [self._translate_to_pygame_coords(int(px), int(py)) for px, py in body_poly]
+            pygame.draw.polygon(self.screen, body_color, polygon_points)
+        else:
+            # TODO; fix this entitysize is an x,y size.. needs refinement
+            radius = max(np.max(entity.size) // 2, 2)
+            pygame.draw.circle(self.screen, body_color, (int(x), int(y)), radius)
 
-        # Draw facing indicator
-        pygame.draw.line(self.screen,
-                         pygame.Color("black"),
-                         (int(x), int(y)),
-                         (int(facing_x), int(facing_y)),
-                         2)
+        # Draw facing indicator -- only for controllable vehicles
+        if getattr(entity, "is_controlled", False):
+            pygame.draw.line(self.screen,
+                             pygame.Color("black"),
+                             (int(x), int(y)),
+                             (int(facing_x), int(facing_y)),
+                             2)
 
     def _draw_senses(self, entity: DrawableEntity) -> None:
         """Draw one entity as a body circle with a line marking its facing."""
@@ -75,6 +92,29 @@ class Renderer:
 
         color = pygame.Color(255, 0, 0, 32) if entity.has_detections else pygame.Color(0, 255, 100, 32)
         pygame.draw.polygon(self.screen, color, polygon_points, 2)  # width=2 for outline
+
+    def _draw_stat_bar(self, entity: DrawableEntity, value: float, max_value: float, color: pygame.Color) -> None:
+        """Draws a low-alpha fill bar just right of entity.position, sized by value/max_value."""
+        if max_value <= 0:
+            return
+
+        x, y = self._translate_to_pygame_coords(entity.position[0], entity.position[1])
+        radius = max(np.max(entity.size) // 2, 2)
+        bar_width, bar_height = 16, 3
+
+        fraction = np.clip(value / max_value, 0.0, 1.0)
+        fill_rect = pygame.Rect(int(x + radius + 4), int(y - bar_height // 2), int(bar_width * fraction), bar_height)
+        pygame.draw.rect(self.screen, color, fill_rect)
+
+    def _draw_behavior_label(self, entity: DrawableEntity) -> None:
+        """Renders the entity's active behavior name(s), centered just above its body."""
+        x, y = self._translate_to_pygame_coords(entity.position[0], entity.position[1])
+        radius = max(np.max(entity.size) // 2, 2)
+
+        label = self.font.render(entity.active_behavior, True, pygame.Color("black"))
+        label_x = int(x - label.get_width() / 2)
+        label_y = int(y - radius - label.get_height() - 2)
+        self.screen.blit(label, (label_x, label_y))
 
     def handle_events(self, events: list[pygame.event.Event]) -> bool:
         """Process pygame events. Returns False if QUIT is requested."""
@@ -86,130 +126,3 @@ class Renderer:
     def close(self) -> None:
         """Tear down the pygame window."""
         pygame.quit()
-
-if __name__ == "__main__":
-    from vehicles.world.controller import InputController
-    from vehicles.world.world import World
-    from vehicles.world.state import WorldState, EntityState
-    from vehicles.entity.vehicle import Vehicle
-    from vehicles.entity.base_object import BaseObject
-    from vehicles.entity.angles import Angle, AngularType
-    from vehicles.entity.senses import Sense, SensorType, SensorShape
-    from vehicles.entity.behaviors.instinct import Instinct, gate_strength, evade
-
-    record = []
-
-    input_controller = InputController()
-    renderer = Renderer(width=800, height=800)
-    world = World(controller=input_controller)
-
-    sight = Sense(type=SensorType.SIGHT,
-                  shape=SensorShape.CONE,
-                  range=150,
-                  field_of_view=Angle(type=AngularType.RADIANS, value=1.0),
-                  noise=0.12,
-                  xray=False,
-                  falloff_exponent=1
-                  )
-
-    hearing = Sense(type=SensorType.HEARING,
-                  shape=SensorShape.OMNI,
-                  range=100,
-                  field_of_view=Angle(type=AngularType.RADIANS, value=6.28),
-                  noise=0.12,
-                  xray=True,
-                  falloff_exponent=1
-                  )
-
-    controlled_vehicle = Vehicle(
-        mass=2,
-        position=(300, 300),
-        size=(10, 10),
-        facing_point=(310, 310),
-        sense=sight,
-        is_controlled=True
-    )
-
-    evade_instinct = Instinct()
-    evade_instinct.add("evade", condition=gate_strength(0.01), action=evade)
-
-    evader_a = Vehicle(
-        mass=2,
-        position=(500, 300),
-        size=(10, 10),
-        facing_point=(510, 300),
-        sense=hearing,
-        is_controlled=False,
-        instinct=evade_instinct
-    )
-
-    evader_b = Vehicle(
-        mass=2,
-        position=(400, 500),
-        size=(10, 10),
-        facing_point=(410, 500),
-        sense=sight,
-        is_controlled=False,
-        instinct=evade_instinct
-    )
-
-    evader_c = Vehicle(
-        mass=10,
-        position=(600, 5250),
-        size=(15, 15),
-        facing_point=(410, 500),
-        sense=hearing,
-        is_controlled=False,
-        instinct=evade_instinct
-    )
-
-    evader_d = Vehicle(
-        mass=10,
-        position=(695, 588),
-        size=(15, 15),
-        facing_point=(410, 500),
-        sense=sight,
-        is_controlled=False,
-        instinct=evade_instinct
-    )
-
-    other_obj = BaseObject(
-        mass=10,
-        position=(400, 400),
-        size=(20, 12),
-        facing_point=(400, 401),
-    )
-
-    evader_a.max_speed, evader_b.max_speed, evader_c.max_speed, evader_d.max_speed = (5, 5, 5, 5)
-
-    world.add_entity(controlled_vehicle)
-    world.add_entity([evader_a, evader_b, evader_c, evader_d])
-    world.add_entity(other_obj)
-
-    running = True
-    clock = pygame.time.Clock()
-
-    while running:
-        # events = pygame.event.get()
-        # # print(events)
-        # if not renderer.handle_events(events):
-        #     running = False
-
-        # quit = input_controller.process_events(events)
-        # if quit:
-        #     running = False
-
-        # 1. Simulate (World knows nothing about pixels)
-        state = world.step()
-
-        # print("our vehicle: ", controlled_vehicle.position)
-
-        # 2. Visualize (Renderer knows nothing about physics)
-        renderer.render(state)
-
-        # 3. Cleanup and tick our clock
-        clock.tick(30)
-        record.append(state)
-
-    renderer.close()
-    print(len(record))

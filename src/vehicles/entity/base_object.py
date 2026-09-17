@@ -31,8 +31,10 @@ class BaseObject:
                  mass: int,
                  position: Tuple[int, int],
                  size: Tuple[int, int],
-                 facing_point: Tuple[int, int]
-        ):
+                 facing_point: Tuple[int, int],
+                 max_speed: Optional[float] = 5,
+                 speed: Optional[float] = 0.2,
+                 ):
         """
         Parameters
         ----------
@@ -53,13 +55,18 @@ class BaseObject:
 
 
         # Constants ----------------
-        self.max_speed: float = 10.0  # 20 - defined by entity type
-        self.speed: float = 0.2  # 2 - defined by entity type - also the acceleration
+        self.max_speed: float = max_speed
+        self.speed: float = speed # accel rate
 
         # Constantly Updated Variables
-        self.old_speed = 0
         self.heading = get_facing_angle(self.position, self.facing_point)
         self.heading.cast_as_radians()
+        self.colliding: list = []  # other BaseObjects currently touching this one
+
+        # Appearance -- generic so the renderer never needs isinstance checks.
+        # A subclass (see entity/species.py's Fish) overrides these after
+        # calling super().__init__() to get its own look.
+        self.color: str = "steelblue"
 
     # ------------------------ MOVEMENT ------------------------
     def move(self) -> None:
@@ -137,31 +144,49 @@ class BaseObject:
         return self.position + rotated_offsets
 
     @property
-    def _colliders(self) -> np.ndarray:
-        _pos = self.bounding_box
-        return np.array([
-            np.min(_pos[:, 0]),
-            np.min(_pos[:, 1]),
-            np.max(_pos[:, 0]),
-            np.max(_pos[:, 1])
-        ])
+    def radius(self) -> float:
+        """
+        Collision radius: a circle approximation of this object's footprint,
+        half its longest side. Matches how the renderer already draws bodies
+        (`radius = max(size) // 2`), so "touching" lines up with what's on
+        screen.
+        """
+        return float(np.max(self.size)) / 2.0
 
     @property
     def direction(self) -> Angle:
         # angular direction in degrees
         return get_facing_angle(self.position, self.facing_point)
 
-    def check_collision(self, instance_objects: list) -> np.ndarray:
-        # minx, miny, maxx, maxy
-        corners_1 = self._colliders
-        target_positions = np.array([t.position for t in instance_objects])
+    def _get_body_render(self) -> np.ndarray | None:
+        """
+        Optional custom body silhouette for the renderer to draw instead of
+        the default circle. None (the default here) means "just draw the
+        plain circle" -- override in a subclass to return an Nx2 array of
+        world-space polygon vertices instead. Build it the same way
+        Vehicle._get_sensor_render() builds the sense cone: local offsets
+        (forward = +y) rotated by heading using the renderer's y-flip
+        convention (heading_rad = -self.heading.value), then translated by
+        self.position.
+        """
+        return None
 
-        return np.array([
-                corners_1[0] <= target_positions[:, 0]
-                and corners_1[1] <= target_positions[:, 1]
-                and corners_1[2] >= target_positions[:, 2]
-                and corners_1[3] >= target_positions[:, 3]
-        ])
+    def check_collision(self, instance_objects: list) -> np.ndarray:
+        """
+        Circle touch test against every other object
+        """
+        others = [obj for obj in instance_objects if obj != self]
+        if not others:
+            return np.array([], dtype=bool)
+
+        other_positions = np.array([o.position for o in others], dtype=np.float64)
+        other_radii = np.array([o.radius for o in others], dtype=np.float64)
+
+        # float64 here on purpose: positions are stored float16 elsewhere, and
+        # squaring a difference of a few hundred units overflows float16.
+        distances = np.linalg.norm(other_positions - self.position.astype(np.float64), axis=1)
+
+        return distances <= (self.radius + other_radii)
 
     def __repr__(self):
         return f'Object at {self.position} facing {self.direction} \n has mass of {self.mass} and is size {self.size}'

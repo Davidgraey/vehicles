@@ -41,10 +41,21 @@ class Sense:
             return np.array([]), np.array([])
 
         other_objects = [obj for obj in instance_objects if obj != parent]
+        if not other_objects:
+            # parent was the only thing in instance_objects -- nothing to
+            # detect. Without this, target_positions below comes back shape
+            # (0,) instead of (0, 2) and the distance math blows up trying
+            # to broadcast against parent_pos.
+            return np.array([]), np.array([])
 
         # 1. Prepare Vectorized Data
-        target_positions = np.array([t.position for t in other_objects])
-        parent_pos = parent.position
+        # float64 on purpose: positions are stored float16 on BaseObject,
+        # and squaring a difference of more than ~250 units (easy in an
+        # 800x600+ world, especially with a long-range sense) overflows
+        # float16 -- same reasoning as the collision-detection math in
+        # base_object.py/world.py.
+        target_positions = np.array([t.position for t in other_objects], dtype=np.float64)
+        parent_pos = parent.position.astype(np.float64)
         parent_heading = parent.heading
 
         # Calculate angle FROM parent TO each target (world coordinates)

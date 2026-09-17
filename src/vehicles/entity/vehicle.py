@@ -1,4 +1,5 @@
 import numpy as np
+from typing import Optional
 from vehicles.entity.base_object import BaseObject
 from vehicles.entity.angles import Angle, AngularType
 from vehicles.entity.senses import SensorType, SensorShape, Sense
@@ -13,14 +14,23 @@ class Vehicle(BaseObject):
                  facing_point: tuple[int, int],
                  sense:Sense,
                  is_controlled: bool = True,
-                 instinct: Instinct = None
+                 instinct: Instinct = None,
+                 metabolism: float = 0.1,
+                 eat_rate: float = 0.5,
+                 max_speed: Optional[float] = 5,
+                 speed: Optional[float] = 0.2
                  ):
-        super().__init__(mass=mass, position=position, size=size, facing_point=facing_point)
+        super().__init__(mass=mass, position=position, size=size, facing_point=facing_point,
+                          max_speed=max_speed, speed=speed)
 
         self.sense = sense
         self.is_controlled = is_controlled
         self.instinct = instinct  # Optional behavior system
         self.detected_objects = []  # List of detected object positions
+
+        self.hunger = 0.0
+        self.metabolism = metabolism
+        self.eat_rate = eat_rate
 
     def perceive(self, instance_objects: list):
         """ Call sense.perceive and track detected objects """
@@ -34,7 +44,10 @@ class Vehicle(BaseObject):
                 if is_detected and idx < len(other_objects):
                     self.detected_objects.append({
                         'position': tuple(other_objects[idx].position),
-                        'strength': float(strength[idx])
+                        'strength': float(strength[idx]),
+                        'object': other_objects[idx],  # live ref -- lets an action
+                                                        # read the target's own
+                                                        # velocity/heading (e.g. pursuit)
                     })
 
         return detected, strength
@@ -50,6 +63,30 @@ class Vehicle(BaseObject):
 
         self.turn(Angle(AngularType.RADIANS, turn))
         self.accelerate(accelerate)
+        self.hunger = self.hunger + self.metabolism
+
+    @property
+    def bite_size(self) -> float:
+        """Food eaten per tick: a factor of the vehicle's size."""
+        return float(np.max(self.size)) * self.eat_rate
+
+    def eat(self, plant) -> float:
+        """
+        Eat from a plant: consume up to `bite_size` food, reduce hunger by
+        the amount actually eaten.
+
+        Parameters
+        ----------
+        plant : Plant
+
+        Returns
+        -------
+        float
+            Amount actually eaten.
+        """
+        eaten = plant.consume(self.bite_size)
+        self.hunger = max(self.hunger - eaten, 0.0)
+        return eaten
 
     def _get_sensor_render(self) -> np.ndarray:
         """returns nx2 numpy array of vertices for the sensor shape."""

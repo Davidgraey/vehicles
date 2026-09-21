@@ -34,6 +34,7 @@ class BaseObject:
                  facing_point: Tuple[int, int],
                  max_speed: Optional[float] = 5,
                  speed: Optional[float] = 0.2,
+                 max_health: Optional[float] = 100,
                  ):
         """
         Parameters
@@ -42,6 +43,7 @@ class BaseObject:
         position : x, y coordinates of object's center(?) point
         size : width, height
         facing_point : x, y coordinates that represent the "facing" point; direction
+        max_health : starting and maximum health
         """
         self.id: int = random.randint(1, 9999)
         self.mass: float = mass
@@ -57,6 +59,11 @@ class BaseObject:
         # Constants ----------------
         self.max_speed: float = max_speed
         self.speed: float = speed # accel rate
+        self.max_health: float = max_health
+
+        # Health: reduced by damage() under whatever conditions a caller
+        # (collisions, hazards, starvation, ...) decides on.
+        self.health: float = max_health
 
         # Constantly Updated Variables
         self.heading = get_facing_angle(self.position, self.facing_point)
@@ -187,6 +194,23 @@ class BaseObject:
         distances = np.linalg.norm(other_positions - self.position.astype(np.float64), axis=1)
 
         return distances <= (self.radius + other_radii)
+
+    def damage(self, amount: float) -> float:
+        """
+        Reduce health, floored at 0.
+
+        Parameters
+        ----------
+        amount : float
+
+        Returns
+        -------
+        float
+            Amount of health actually lost.
+        """
+        lost = min(amount, self.health)
+        self.health -= lost
+        return lost
 
     def __repr__(self):
         return f'Object at {self.position} facing {self.direction} \n has mass of {self.mass} and is size {self.size}'

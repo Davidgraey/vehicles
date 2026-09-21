@@ -16,6 +16,7 @@ from vehicles.world.state import EntityState, WorldState
 from vehicles.entity.base_object import BaseObject
 from vehicles.entity.vehicle import Vehicle
 from vehicles.entity.environment import Plant
+from vehicles.entity.species import Predator, Herbivore
 from vehicles.entity.angles import calculate_relative_angle, angular_motion_to_cartesian, cartesian_motion_to_angular
 
 
@@ -129,6 +130,8 @@ class World:
                 max_hunger = getattr(v, 'max_hunger', None),
                 food = getattr(v, 'food', None),
                 max_food = getattr(v, 'max_food', None),
+                health = v.health,
+                max_health = v.max_health,
                 active_behavior = (", ".join(v.instinct.active_behaviors)
                                     if isinstance(v, Vehicle) and not v.is_controlled and v.instinct is not None
                                     else None),
@@ -190,27 +193,28 @@ class World:
         for i, entity in enumerate(self.entities):
             entity.colliding = [self.entities[j] for j in np.where(touching[i])[0]]
 
-        self.resolve_collisions(touching)
-        self.resolve_feeding(touching)
+        self.resolve_contacts(touching)
 
         return touching
 
-    def resolve_collisions(self, touching: np.ndarray, restitution: Optional[float] = None) -> None:
+    def resolve_contacts(self, touching: np.ndarray, restitution: Optional[float] = None) -> None:
         """
-        Physically-informed response to every touching pair: separate the
-        overlapping bodies, then exchange velocity via a mass-weighted
-        impulse along the collision normal (standard 2D circle-circle
-        impulse resolution). Heading and speed both fall out of that impulse
-        instead of being scripted separately -- an object is "redirected"
-        because its post-collision velocity vector genuinely points a new
-        way, and a collision "reduces velocity" because `restitution` < 1
-        bleeds off some of the closing speed on every hit.
-
-        Mass does the rest on its own: every push and every velocity change
-        below is split by inverse mass (1/mass), so a heavy object (small
-        1/mass) barely moves and barely changes direction, while a light one
-        gets shoved and redirected hard -- exactly "heavy objects redirect
-        less and are less affected by collisions," with no special-casing.
+        Single pass over every touching pair, resolving everything contact
+        causes:
+          - physics: separate the overlapping bodies, then exchange velocity
+            via a mass-weighted impulse along the collision normal (standard
+            2D circle-circle impulse resolution). Heading and speed both
+            fall out of that impulse instead of being scripted separately --
+            an object is "redirected" because its post-collision velocity
+            vector genuinely points a new way, and a collision "reduces
+            velocity" because `restitution` < 1 bleeds off some of the
+            closing speed on every hit. Mass does the rest on its own: every
+            push and every velocity change is split by inverse mass
+            (1/mass), so a heavy object (small 1/mass) barely moves and
+            barely changes direction, while a light one gets shoved and
+            redirected hard.
+          - feeding: a Vehicle touching a Plant eats from it; a Predator
+            touching a Herbivore attacks it.
 
         `restitution` defaults to `self.restitution` (0..1, bounciness: 0 =
         perfectly inelastic, 1 = perfectly elastic) when not given directly.
@@ -281,16 +285,12 @@ class World:
                 a.velocity = float(np.clip(new_speed_a, -(a.max_speed / 2), a.max_speed))
                 b.velocity = float(np.clip(new_speed_b, -(b.max_speed / 2), b.max_speed))
 
-    def resolve_feeding(self, touching: np.ndarray) -> None:
-        """
-        Feeding response to every touching pair: a Vehicle touching a
-        Plant eats from it, separate from the physical collision response
-        in `resolve_collisions`.
-        """
-        for i, j in np.argwhere(np.triu(touching, k=1)):
-            a, b = self.entities[i], self.entities[j]
-
+            # --- feeding: plants get eaten, prey gets attacked -----------
             if isinstance(a, Vehicle) and isinstance(b, Plant):
                 a.eat(b)
             elif isinstance(b, Vehicle) and isinstance(a, Plant):
                 b.eat(a)
+            elif isinstance(a, Predator) and isinstance(b, Herbivore):
+                a.eat_prey(b)
+            elif isinstance(b, Predator) and isinstance(a, Herbivore):
+                b.eat_prey(a)

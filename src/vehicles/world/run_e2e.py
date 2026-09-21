@@ -23,8 +23,8 @@ if __name__ == "__main__":
     record = []
 
     input_controller = InputController()
-    renderer = Renderer(width=800, height=800)
-    world = World(controller=input_controller)
+    renderer = Renderer(width=900, height=900, verbose=True)
+    world = World(controller=input_controller, verbose=False)
 
     sight = Sense(type=SensorType.SIGHT,
                   shape=SensorShape.CONE,

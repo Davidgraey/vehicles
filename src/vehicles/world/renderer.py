@@ -22,8 +22,11 @@ class Renderer:
             height: int = 800,
             caption: str = "Braitenberg Vehicles",
             background_color: str = "floralwhite",
+            verbose: bool = False
+
     ):
         pygame.init()
+        self.verbose = verbose
         self.width, self.height = width, height
         self.screen = pygame.display.set_mode((width, height))
         pygame.display.set_caption(caption)
@@ -39,12 +42,15 @@ class Renderer:
             if entity.sense_poly is not None:
                 self._draw_senses(entity)
                 # self._draw_bounds(entity)
-            if entity.hunger is not None:
-                self._draw_stat_bar(entity, entity.hunger, 100, pygame.Color(255, 0, 0, 60))
-            if entity.food is not None and entity.max_food is not None:
-                self._draw_stat_bar(entity, entity.food, entity.max_food, pygame.Color(0, 200, 0, 60))
-            if entity.active_behavior:
-                self._draw_behavior_label(entity)
+
+            if self.verbose:
+                if entity.hunger is not None:
+                    self._draw_stat_bar(entity, entity.hunger, 100, pygame.Color(255, 0, 0, 60))
+                if entity.food is not None and entity.max_food is not None:
+                    self._draw_stat_bar(entity, entity.food, entity.max_food, pygame.Color(0, 200, 0, 60))
+                self._draw_stat_bar(entity, entity.health, entity.max_health, pygame.Color(0, 200, 0, 60), row=1)
+                if entity.active_behavior:
+                    self._draw_behavior_label(entity)
 
         pygame.display.flip()
 
@@ -93,17 +99,23 @@ class Renderer:
         color = pygame.Color(255, 0, 0, 32) if entity.has_detections else pygame.Color(0, 255, 100, 32)
         pygame.draw.polygon(self.screen, color, polygon_points, 2)  # width=2 for outline
 
-    def _draw_stat_bar(self, entity: DrawableEntity, value: float, max_value: float, color: pygame.Color) -> None:
-        """Draws a low-alpha fill bar just right of entity.position, sized by value/max_value."""
+    def _draw_stat_bar(self, entity: DrawableEntity, value: float, max_value: float, color: pygame.Color, row: int = 0) -> None:
+        """
+        Draws a low-alpha fill bar just right of entity.position, sized by
+        value/max_value. `row` stacks multiple bars on the same entity
+        (0 = level with position, 1 = one bar-height below, ...) so e.g.
+        hunger and health don't draw on top of each other.
+        """
         if max_value <= 0:
             return
 
         x, y = self._translate_to_pygame_coords(entity.position[0], entity.position[1])
         radius = max(np.max(entity.size) // 2, 2)
-        bar_width, bar_height = 16, 3
+        bar_width, bar_height, row_spacing = 16, 3, 5
 
         fraction = np.clip(value / max_value, 0.0, 1.0)
-        fill_rect = pygame.Rect(int(x + radius + 4), int(y - bar_height // 2), int(bar_width * fraction), bar_height)
+        bar_y = int(y - bar_height // 2 + row * row_spacing)
+        fill_rect = pygame.Rect(int(x + radius + 4), bar_y, int(bar_width * fraction), bar_height)
         pygame.draw.rect(self.screen, color, fill_rect)
 
     def _draw_behavior_label(self, entity: DrawableEntity) -> None:

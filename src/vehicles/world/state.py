@@ -26,6 +26,8 @@ class EntityState:
     max_hunger: Optional[float] = None
     food: Optional[float] = None
     max_food: Optional[float] = None
+    health: float = 100.0
+    max_health: float = 100.0
     active_behavior: Optional[str] = None
     is_controlled: bool = False
 

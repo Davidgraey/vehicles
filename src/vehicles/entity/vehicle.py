@@ -17,6 +17,8 @@ class Vehicle(BaseObject):
                  instinct: Instinct = None,
                  metabolism: float = 0.1,
                  eat_rate: float = 0.5,
+                 starvation_threshold: float = 100.0,
+                 starvation_rate: float = 0.5,
                  max_speed: Optional[float] = 5,
                  speed: Optional[float] = 0.2
                  ):
@@ -31,6 +33,8 @@ class Vehicle(BaseObject):
         self.hunger = 0.0
         self.metabolism = metabolism
         self.eat_rate = eat_rate
+        self.starvation_threshold = starvation_threshold
+        self.starvation_rate = starvation_rate
 
     def perceive(self, instance_objects: list):
         """ Call sense.perceive and track detected objects """
@@ -65,6 +69,9 @@ class Vehicle(BaseObject):
         self.accelerate(accelerate)
         self.hunger = self.hunger + self.metabolism
 
+        if self.hunger > self.starvation_threshold:
+            self.damage(self.starvation_rate)
+
     @property
     def bite_size(self) -> float:
         """Food eaten per tick: a factor of the vehicle's size."""
@@ -87,6 +94,24 @@ class Vehicle(BaseObject):
         eaten = plant.consume(self.bite_size)
         self.hunger = max(self.hunger - eaten, 0.0)
         return eaten
+
+    def eat_prey(self, prey) -> float:
+        """
+        Attack another Vehicle: reduce its health by bite_size, and reduce
+        hunger by the same amount.
+
+        Parameters
+        ----------
+        prey : Vehicle
+
+        Returns
+        -------
+        float
+            Amount of health actually removed from prey.
+        """
+        lost = prey.damage(self.bite_size)
+        self.hunger = max(self.hunger - self.bite_size, 0.0)
+        return lost
 
     def _get_sensor_render(self) -> np.ndarray:
         """returns nx2 numpy array of vertices for the sensor shape."""

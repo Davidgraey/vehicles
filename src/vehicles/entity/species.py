@@ -5,7 +5,7 @@ from vehicles.entity.vehicle import Vehicle
 from vehicles.entity.base_object import BaseObject
 from vehicles.entity.angles import Angle, AngularType
 from vehicles.entity.senses import Sense, SensorType, SensorShape
-from vehicles.entity.behaviors.instinct import Instinct, same_type, not_type, hungry_for, separation, flock, pursuit, evade, arrive
+from vehicles.entity.behaviors.instinct import Instinct, same_type, hungry_for, separation, flock, pursuit, evade, arrive
 from vehicles.entity.environment import Plant
 
 
@@ -117,15 +117,13 @@ class Fish(Vehicle):
 
 class Predator(Vehicle):
     """
-    Hunts anything that isn't another Predator. Uses pursuit -- steering
-    toward where its strongest detection is HEADING, not just where it
-    currently is -- so it leads a moving target instead of always trailing
-    it. Scoped with not_type(Predator), the complement of the same_type()
-    check Fish uses for schooling: a Predator chases every other species
-    in the world (Fish, a plain Vehicle, scenery) without needing to name
-    them, and automatically leaves other Predators alone. Once hungry
-    enough, also falls back to find_food (hungry_for(Plant)/arrive())
-    when there's no prey to pursue.
+    Hunts Herbivores, and only Herbivores. Uses pursuit -- steering toward
+    where its strongest detection is HEADING, not just where it currently
+    is -- so it leads a moving target instead of always trailing it.
+    Scoped with same_type(Herbivore), same pattern Fish uses for schooling
+    -- Fish, other Predators, and scenery are all left alone. Once hungry
+    enough, also falls back to find_food (hungry_for(Plant)/arrive()) when
+    there's no prey to pursue.
     """
 
     def __init__(self,
@@ -152,7 +150,7 @@ class Predator(Vehicle):
         instinct = Instinct()
         instinct.add(
             "pursuit",
-            condition=not_type(Predator),
+            condition=same_type(Herbivore),
             action=lambda p, t: pursuit(p, t, lookahead=lookahead),
         )
         # once hungry enough, go find a Plant and ease in on it
@@ -231,7 +229,7 @@ class Herbivore(Vehicle):
       find_food -- hungry_for(Plant): once hungry enough, seek out any
                 detected Plant via arrive() -- eases off near it instead of
                 flying past, so it stays close enough to eat. Eating itself
-                happens on contact, in World.resolve_feeding().
+                happens on contact, in World.resolve_contacts().
     """
 
     def __init__(self,

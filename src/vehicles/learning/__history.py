@@ -66,7 +66,7 @@ if __name__ == "__main__":
     from vehicles.world.world import World
 
     world = World(seed=0)
-    world.add_entity([Fish(position=(300 + 20 * i, 300), facing_point=(300 + 20 * i, 310)) for i in range(5)])
+    world.add_entity([Fish(position=(300 + 20 * i, 300), facing_point=(300 + 20 * i, 310)) for i in range(2)])
     world.add_terrain([
         Barrier(Wall([(200, 420), (450, 420)], thickness=8), sample_spacing=2.0),
         Terrain(Polygon.rectangle(center=(420, 220), size=(80, 40)), sample_spacing=2.0),
@@ -79,7 +79,7 @@ if __name__ == "__main__":
     for _ in range(20):
         world.step()
         history.record(*encoder.encode(world.frame))
-
+        print(encoder)
     x, valid = history.batch()
     print(f"x {x.shape}, valid {valid.shape}, all valid: {bool(valid.all())}")
-    print(encoder)
+

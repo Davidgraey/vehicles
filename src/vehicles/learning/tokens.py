@@ -40,7 +40,7 @@ KINDS = {
 }
 
 
-def token_for(kind: type) -> Token:
+def token_lookup(kind: type) -> Token:
     """
     Token of the nearest registered class in `kind`'s MRO.
 

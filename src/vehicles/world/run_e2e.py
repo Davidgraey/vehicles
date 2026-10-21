@@ -19,11 +19,12 @@ if __name__ == "__main__":
     )
     from vehicles.entity.species import Fish, Predator, Herbivore
     from vehicles.entity.environment import Rock, Tree, Grass
+    from vehicles.world.terrain import Terrain, Barrier, Polygon, Wall
 
     record = []
 
     input_controller = InputController()
-    renderer = Renderer(width=900, height=900, verbose=True)
+    renderer = Renderer(width=900, height=900, verbose=False)
     world = World(controller=input_controller, verbose=False)
 
     sight = Sense(type=SensorType.SIGHT,
@@ -188,20 +189,13 @@ if __name__ == "__main__":
     spacer_c = Vehicle(mass=2, position=(640, 170), size=(10, 10), facing_point=(641, 170),
                         sense=personal_space_sense, is_controlled=False, instinct=separation_instinct)
 
-    # Fish: full Reynolds flocking (separation + alignment + cohesion) via
-    # entity.species.Fish, pre-wired with same_type(Fish) so the school only
-    # reacts to itself -- everything above is invisible to it for schooling
-    # purposes, same as it's invisible to them.
     school = [
         Fish(position=(5 + (i % 3) * 20, 80 + (i // 3) * 20),
              facing_point=(5 + (i % 3) * 20 + 1, 80 + (i // 3) * 20))
-        for i in range(20)
+        for i in range(10)
     ]
 
-    # Predator + Herbivore herd: the predator (not_type(Predator)) hunts
-    # every herbivore in range via pursuit, and each herbivore (same_type
-    # (Predator)) evades it the moment it's sensed, while also keeping a
-    # separation buffer (avoid) from its herd-mates and everything else.
+    # PREDATOR
     predator = Predator(
         position=(700, 700),
         facing_point=(700, 710),
@@ -210,7 +204,7 @@ if __name__ == "__main__":
     herd = [
         Herbivore(position=(550 + (i % 3) * 40, 560 + (i // 3) * 40),
                   facing_point=(550 + (i % 3) * 40 + 1, 560 + (i // 3) * 40))
-        for i in range(6)
+        for i in range(4)
     ]
 
     # Environment: a Rock barrier and a small Tree/Grass patch, off to the
@@ -231,7 +225,7 @@ if __name__ == "__main__":
     grass_patch = [
         Grass(position=(600 + i * 20, 601),
               facing_point=(601 + i * 20 + 1, 601))
-        for i in range(5)
+        for i in range(3)
     ]
 
     world.add_entity(controlled_vehicle)
@@ -246,6 +240,13 @@ if __name__ == "__main__":
     world.add_entity(rock)
     world.add_entity(trees)
     world.add_entity(grass_patch)
+
+    block = Barrier(Polygon.rectangle(center=(450, 150), size=(160, 30)))
+    corner = Barrier(Wall([(120, 500), (120, 420), (330, 420)], thickness=8))
+    zigzag = Barrier(Wall([(500, 420), (560, 470), (500, 520)], thickness=6))
+    pond = Terrain(Polygon([(620, 250), (720, 230), (760, 320), (680, 380), (610, 330)]), color="steelblue")
+
+    world.add_terrain([block, corner, zigzag, pond])
 
     running = True
     clock = pygame.time.Clock()

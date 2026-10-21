@@ -15,9 +15,9 @@ readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
     "matplotlib",
-    "dvc",
     "numpy",
     "pygame"
+    "polyergalio >= 0.1.8"
 ]
 
 

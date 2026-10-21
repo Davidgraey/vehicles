@@ -22,11 +22,11 @@ class Fish(Vehicle):
                  facing_point: tuple[int, int],
                  mass: int = 2,
                  size: tuple[int, int] = (8, 8),
-                 personal_space: float = 25.0,
-                 school_range: float = 120.0,
+                 personal_space: float = 30.0,
+                 school_range: float = 250.0,
                  hunger_threshold: float = 20.0,
-                 max_speed: Optional[float] = 5,
-                 speed: Optional[float] = 0.05,
+                 max_speed: Optional[float] = 3,
+                 speed: Optional[float] = 0.25,
                  is_controlled: bool = False):
 
         sense = Sense(
@@ -75,31 +75,23 @@ class Fish(Vehicle):
         self.school_range = school_range
         self.personal_space = personal_space
 
-        # Appearance -- silver body, drawn as a fish silhouette instead of
-        # the generic circle (see _get_body_render below)
+        # Appearance -- silver body, drawn as a fish silhouette
         self.color = "silver"
 
     def _get_body_render(self) -> np.ndarray:
         """
-        A small elongated body with a forked tail instead of the generic
-        circle every other entity draws by default. Built the same way
-        Vehicle._get_sensor_render() builds the sense cone: local offsets
-        (forward = +y) rotated by heading using the renderer's y-flip
-        convention, then translated to world position.
+        A small elongated body with a forked tail instead of the generic circle every other entity draws by default
         """
         length = float(np.max(self.size)) * 0.9
         width = float(np.max(self.size)) * 0.5
 
-        # local silhouette, forward = +y, nose first, wound consistently
-        # for polygon fill: nose -> right shoulder -> right tail-fin tip ->
-        # tail notch -> left tail-fin tip -> left shoulder
         local = np.array([
-            [0.0,           length],
-            [width * 0.5,   length * 0.35],
-            [width,        -length * 0.55],
-            [0.0,          -length * 0.25],
-            [-width,       -length * 0.55],
-            [-width * 0.5,  length * 0.35],
+            [0.0, length],
+            [width * 0.5, length * 0.35],
+            [width, -length * 0.55],
+            [0.0, -length * 0.25],
+            [-width, -length * 0.55],
+            [-width * 0.5, length * 0.35],
         ])
 
         self.heading.cast_as_radians()
@@ -117,13 +109,11 @@ class Fish(Vehicle):
 
 class Predator(Vehicle):
     """
-    Hunts Herbivores, and only Herbivores. Uses pursuit -- steering toward
-    where its strongest detection is HEADING, not just where it currently
-    is -- so it leads a moving target instead of always trailing it.
-    Scoped with same_type(Herbivore), same pattern Fish uses for schooling
-    -- Fish, other Predators, and scenery are all left alone. Once hungry
-    enough, also falls back to find_food (hungry_for(Plant)/arrive()) when
-    there's no prey to pursue.
+    Hunts Herbivores, and only Herbivores. Uses pursuit -- steering toward where its strongest detection is
+    HEADING, not just where it currently is -- so it leads a moving target instead of always trailing it
+
+    Scoped with same_type(Herbivore), same pattern Fish uses for schooling -- Plants and scenery are ignored
+
     """
 
     def __init__(self,
@@ -133,9 +123,10 @@ class Predator(Vehicle):
                  size: tuple[int, int] = (16, 16),
                  lookahead: float = 3.0,
                  hunger_threshold: float = 20.0,
-                 max_speed: Optional[float] = 6,
-                 speed: Optional[float] = 0.2,
-                 is_controlled: bool = False):
+                 max_speed: Optional[float] = 3,
+                 speed: Optional[float] = 0.15,
+                 is_controlled: bool = False
+                 ):
 
         sense = Sense(
             type=SensorType.SIGHT,
@@ -148,15 +139,16 @@ class Predator(Vehicle):
         )
 
         instinct = Instinct()
+
         instinct.add(
             "pursuit",
             condition=same_type(Herbivore),
             action=lambda p, t: pursuit(p, t, lookahead=lookahead),
         )
-        # once hungry enough, go find a Plant and ease in on it
+
         instinct.add(
             "find_food",
-            condition=hungry_for(Plant, hunger_threshold=hunger_threshold),
+            condition=hungry_for(Herbivore, hunger_threshold=hunger_threshold),
             action=lambda p, t: arrive(p, t, slow_radius=40.0),
         )
 
@@ -172,29 +164,24 @@ class Predator(Vehicle):
             instinct=instinct,
         )
 
-        # Appearance -- larger, darker, sharper-nosed than Fish, so a
-        # predator reads as a predator at a glance
+        # Appearance -- larger, darker, red
         self.color = "firebrick"
 
     def _get_body_render(self) -> np.ndarray:
         """
-        A bigger, sharper wedge than Fish's rounder forked-tail silhouette.
-        Built the same way -- local offsets (forward = +y) rotated by
-        heading using the renderer's y-flip convention, then translated to
-        world position.
+        A bigger, sharper wedge than Fish's rounder geometry
         """
         length = float(np.max(self.size)) * 1.0
         width = float(np.max(self.size)) * 0.55
 
-        # local silhouette, forward = +y: nose -> wide forward jaw ->
-        # narrower tail -> tail notch -> narrower tail -> wide forward jaw
+        # local silhouette
         local = np.array([
-            [0.0,            length],
-            [width,          length * -0.2],
-            [width * 0.4,    length * -0.7],
-            [0.0,            length * -0.45],
-            [-width * 0.4,   length * -0.7],
-            [-width,         length * -0.2],
+            [0.0, length],
+            [width, length * -0.2],
+            [width * 0.4, length * -0.7],
+            [0.0, length * -0.45],
+            [-width * 0.4, length * -0.7],
+            [-width, length * -0.2],
         ])
 
         self.heading.cast_as_radians()
@@ -212,24 +199,19 @@ class Predator(Vehicle):
 
 class Herbivore(Vehicle):
     """
-    Skittish prey: evades Predators outright, and separately keeps a
-    general "avoid" buffer from everything else too -- other herbivores,
-    scenery, whatever's nearby -- so it doesn't blunder into things while
-    it's not busy fleeing. Two behaviors, same_type()-scoped like Fish and
-    Predator:
+    Skittish prey: evades Predators and separately keeps a general "avoid" buffer from everything else
+    Two behaviors, same_type()-scoped like Fish and Predator:
 
-      evade  -- same_type(Predator): the moment a Predator is detected,
-                turn away and reverse hard. This alone would let it wander
-                blindly into everything else, hence:
-      avoid  -- same_type(BaseObject, max_distance=personal_space), minus
-                any Plant: matches literally anything close by (reusing
-                same_type() as a type-agnostic "within range" filter)
-                except food, so it doesn't fight find_food by keeping the
-                one thing it's trying to reach at arm's length.
-      find_food -- hungry_for(Plant): once hungry enough, seek out any
-                detected Plant via arrive() -- eases off near it instead of
-                flying past, so it stays close enough to eat. Eating itself
-                happens on contact, in World.resolve_contacts().
+      evade  -- same_type(Predator): the moment a Predator is detected, turn away and reverse hard. This alone would
+        let it wander blindly into everything else, hence:
+
+      avoid  -- same_type(BaseObject, max_distance=personal_space), minus any Plant: matches literally anything
+        close by (reusing same_type() as a type-agnostic "within range" filter) except food, so it doesn't fight
+        find_food by keeping the one thing it's trying to reach at arm's length.
+
+      find_food -- hungry_for(Plant): once hungry enough, seek out any detected Plant via arrive() -- eases off near it
+        instead of flying past, so it stays close enough to eat. Eating itself happens on CONTACT,
+        in World.resolve_contacts().
     """
 
     def __init__(self,
@@ -239,7 +221,7 @@ class Herbivore(Vehicle):
                  size: tuple[int, int] = (10, 10),
                  personal_space: float = 30.0,
                  hunger_threshold: float = 20.0,
-                 max_speed: Optional[float] = 8,
+                 max_speed: Optional[float] = 5,
                  speed: Optional[float] = 0.1,
                  is_controlled: bool = False):
 
@@ -254,19 +236,19 @@ class Herbivore(Vehicle):
         )
 
         instinct = Instinct()
+
         # flee any detected Predator, full priority
         instinct.add(
             "evade",
             condition=same_type(Predator),
             action=evade,
         )
-        # otherwise, don't crowd whatever else is nearby -- except food,
-        # or this would fight find_food by keeping it out of eating range
+        # otherwise, don't crowd whatever else is nearby -- except food
         instinct.add(
             "avoid",
             condition=lambda p, t: [
                 d for d in same_type(BaseObject, max_distance=personal_space)(p, t)
-                if not isinstance(d.get('object'), Plant)
+                if not issubclass(d.kind, Plant)
             ],
             action=lambda p, t: separation(p, t, strength=0.5),
         )
@@ -290,8 +272,7 @@ class Herbivore(Vehicle):
         )
         self.personal_space = personal_space
 
-        # Appearance -- warm, earthy tone and a soft rounded body, distinct
-        # from Fish's silver forked tail and Predator's sharp firebrick wedge
+        # Appearance -- warm, earthy tone and a soft rounded body
         self.color = "peru"
 
     def _get_body_render(self) -> np.ndarray:
@@ -305,12 +286,12 @@ class Herbivore(Vehicle):
         width = float(np.max(self.size)) * 0.55
 
         local = np.array([
-            [0.0,            length],
-            [width,          length * 0.3],
-            [width * 0.8,   -length * 0.5],
-            [0.0,           -length * 0.7],
-            [-width * 0.8,  -length * 0.5],
-            [-width,         length * 0.3],
+            [0.0, length],
+            [width, length * 0.3],
+            [width * 0.8, -length * 0.5],
+            [0.0, -length * 0.7],
+            [-width * 0.8, -length * 0.5],
+            [-width, length * 0.3],
         ])
 
         self.heading.cast_as_radians()

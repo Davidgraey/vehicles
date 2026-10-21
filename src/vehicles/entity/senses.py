@@ -1,8 +1,9 @@
 import numpy as np
 from dataclasses import dataclass
 from enum import Enum
-from vehicles.entity.angles import calculate_relative_angle, Angle
-from vehicles.entity.base_object import BaseObject, get_facing_angle
+from vehicles.entity.angles import Angle
+
+CARDIOID_THRESHOLD = 0.5
 
 
 class SensorType(Enum):
@@ -35,52 +36,23 @@ class Sense:
     def is_omni(self) -> bool:
         return self.shape == SensorShape.OMNI
 
-    def perceive(self, parent: BaseObject, instance_objects: list) -> tuple[np.ndarray, np.ndarray]:
-        n_targets = len(instance_objects)
-        if n_targets == 0:
-            return np.array([]), np.array([])
+    def detect(self, distances: np.ndarray, relative_angles: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+        """
+        Parameters
+        ----------
+        distances : (M,) distance from the sensing vehicle to each candidate
+        relative_angles : (M,) signed angle from the vehicle's heading to each candidate, radians
 
-        other_objects = [obj for obj in instance_objects if obj != parent]
-        if not other_objects:
-            # parent was the only thing in instance_objects -- nothing to
-            # detect. Without this, target_positions below comes back shape
-            # (0,) instead of (0, 2) and the distance math blows up trying
-            # to broadcast against parent_pos.
-            return np.array([]), np.array([])
-
-        # 1. Prepare Vectorized Data
-        # float64 on purpose: positions are stored float16 on BaseObject,
-        # and squaring a difference of more than ~250 units (easy in an
-        # 800x600+ world, especially with a long-range sense) overflows
-        # float16 -- same reasoning as the collision-detection math in
-        # base_object.py/world.py.
-        target_positions = np.array([t.position for t in other_objects], dtype=np.float64)
-        parent_pos = parent.position.astype(np.float64)
-        parent_heading = parent.heading
-
-        # Calculate angle FROM parent TO each target (world coordinates)
-        target_angles = [get_facing_angle(parent_pos, t) for t in target_positions]
-
-        # 2. Calculate relative angles (from parent heading to targes)
-        relative_angles = [
-            calculate_relative_angle(parent_heading, a) for a in target_angles
-        ]
-
-        # target_angles = np.array([a.value if hasattr(a, 'value') else a for a in target_angles])
-        relative_angles = np.array([r.value if hasattr(r, 'value') else r for r in relative_angles])
-
-        fov_value = self.field_of_view.value
-
-        # --- GEOMETRY PHASE ---
+        Returns
+        -------
+        detected : (M,) bool
+        strength : (M,) float, zero where not detected
+        """
         geo_mask = evaluate_detection_geometry(
             relative_angles=relative_angles,
             sensor_shape=self.shape,
-            sensor_fov=fov_value
+            sensor_fov=self.field_of_view.value
         )
-
-        # --- RANGE PHASE ---
-        distances = np.linalg.norm(target_positions - parent_pos, axis=1)
-
         range_mask, raw_strength = evaluate_range_falloff(
             distances=distances,
             relative_angles=relative_angles,
@@ -89,21 +61,35 @@ class Sense:
             falloff_exponent=self.falloff_exponent
         )
 
-        # --- COMBINE PHASE ---
         detected = geo_mask & range_mask
+        strength = np.where(detected, raw_strength, 0.0)
 
-        detected_indices = np.where(detected)[0]
-        strength = np.zeros(n_targets)
-        if len(detected_indices) > 0:
-            # Clip and apply strength to detected targets only
-            strength[detected_indices] = raw_strength[detected_indices]
-
-            # Apply noise jitter
-            if self.noise > 0:
-                noise = np.random.uniform(-self.noise, self.noise, size=len(detected_indices))
-                strength[detected_indices] += noise
+        if self.noise > 0:
+            strength[detected] += np.random.uniform(-self.noise, self.noise, size=int(detected.sum()))
 
         return detected, strength
+
+    def angular_extent(self) -> list[tuple[float, float]]:
+        """
+        Visible angular intervals, relative to the heading.
+
+        Returns
+        -------
+        list of (start, end) in radians, ordered by start, each with start < end
+        """
+        half = self.field_of_view.to_radians() / 2.0
+
+        if self.shape == SensorShape.OMNI:
+            return [(-np.pi, np.pi)]
+        if self.shape == SensorShape.CONE:
+            return [(-half, half)]
+        if self.shape == SensorShape.CARDIOID:
+            limit = float(np.arccos(CARDIOID_THRESHOLD))
+            return [(-limit, limit)]
+        if self.shape == SensorShape.BILOBED:
+            return [(-half, half), (np.pi - half, np.pi + half)]
+
+        raise ValueError(f"Unsupported shape: {self.shape}")
 
     def __repr__(self):
         return f'{self.type.value}: {self.shape.value}'
@@ -140,7 +126,7 @@ def evaluate_detection_geometry(
     elif sensor_shape == SensorShape.CARDIOID:
         # Cardioid: only front direction (cos(θ) > 0.5)
         cos_vals = np.cos(relative_angles)
-        detected_mask = cos_vals > 0.5
+        detected_mask = cos_vals > CARDIOID_THRESHOLD
 
     elif sensor_shape == SensorShape.BILOBED:
         # Two lobes: front cone around 0, back cone around π

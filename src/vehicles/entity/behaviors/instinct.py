@@ -36,14 +36,14 @@ from vehicles.entity.base_object import get_facing_angle
 def gate_strength(threshold: float = 0.01):
     """Condition: detected objects whose signal strength exceeds thresh """
     def condition(parent, detected_objects: list) -> list:
-        return [d for d in detected_objects if d['strength'] > threshold]
+        return [d for d in detected_objects if d.strength > threshold]
     return condition
 
 
 def closest(n: int = 1):
     """Condition: the n strongest detections above threshold """
     def condition(parent, detected_objects: list) -> list:
-        return sorted(detected_objects, key=lambda d: d['strength'], reverse=True)[:n]
+        return sorted(detected_objects, key=lambda d: d.strength, reverse=True)[:n]
     return condition
 
 
@@ -63,12 +63,11 @@ def always():
 
 def same_type(entity_type: type, min_strength: float = 0.0, max_distance: float = None):
     """
-    Condition: keep only detections whose live object is an instance of
+    Condition: keep only detections whose kind is a subclass of
     `entity_type`. This is the instance-type check group behaviors need --
     it's what lets, say, a Fish's flock/separation react only to other
     Fish, ignoring predators, scenery, or any other Vehicle subclass
-    sharing the world. Detections with no live 'object' reference (plain
-    sensor output with nothing to type-check) are dropped.
+    sharing the world.
 
     `max_distance`, if given, additionally drops anything farther than
     that from the parent -- handy for carving a tight "personal space"
@@ -78,12 +77,12 @@ def same_type(entity_type: type, min_strength: float = 0.0, max_distance: float 
     def condition(parent, detected_objects: list) -> list:
         result = [
             d for d in detected_objects
-            if isinstance(d.get('object'), entity_type) and d['strength'] > min_strength
+            if issubclass(d.kind, entity_type) and d.strength > min_strength
         ]
         if max_distance is not None:
             result = [
                 d for d in result
-                if np.linalg.norm(np.array(d['position']) - parent.position) <= max_distance
+                if np.linalg.norm(np.array(d.position) - parent.position) <= max_distance
             ]
         return result
     return condition
@@ -91,27 +90,24 @@ def same_type(entity_type: type, min_strength: float = 0.0, max_distance: float 
 
 def not_type(entity_type: type, min_strength: float = 0.0, max_distance: float = None):
     """
-    Condition: keep only detections whose live object is NOT an instance of
+    Condition: keep only detections whose kind is NOT a subclass of
     `entity_type` -- the complement of same_type(). This is what lets a
     Predator pursue anything that isn't another Predator without having to
     enumerate every prey species by name; a new species added later is
     automatically huntable just by not being a Predator.
 
     Same optional `min_strength`/`max_distance` filters as same_type().
-    Detections with no live 'object' reference are dropped (nothing to
-    type-check).
     """
     def condition(parent, detected_objects: list) -> list:
         result = [
             d for d in detected_objects
-            if d.get('object') is not None
-            and not isinstance(d['object'], entity_type)
-            and d['strength'] > min_strength
+            if not issubclass(d.kind, entity_type)
+            and d.strength > min_strength
         ]
         if max_distance is not None:
             result = [
                 d for d in result
-                if np.linalg.norm(np.array(d['position']) - parent.position) <= max_distance
+                if np.linalg.norm(np.array(d.position) - parent.position) <= max_distance
             ]
         return result
     return condition
@@ -149,13 +145,30 @@ def near_edge(margin: float = 60.0):
     return condition
 
 
+def near_terrain(kind: type, max_distance: float = None):
+    """
+    Condition: the parent's sensed terrain of the given kind, optionally only
+    within `max_distance`. Reads the parent's observation rather than
+    `detected_objects`, so terrain never reaches entity-oriented conditions.
+    """
+    def condition(parent, detected_objects: list) -> list:
+        result = [d for d in parent.detected_terrain if issubclass(d.kind, kind)]
+        if max_distance is not None:
+            result = [
+                d for d in result
+                if np.linalg.norm(np.array(d.position) - parent.position) <= max_distance
+            ]
+        return result
+    return condition
+
+
 # =====================================
 # ACTION FUNCTIONS
 
 def approach(parent, triggered: list) -> Tuple[float, float]:
     """Turn toward and accel at the strongest detected object."""
-    target = max(triggered, key=lambda d: d['strength'])
-    target_pos = np.array(target['position'])
+    target = max(triggered, key=lambda d: d.strength)
+    target_pos = np.array(target.position)
 
     target_angle = get_facing_angle(parent.position, target_pos)
     parent.heading.cast_as_radians()
@@ -174,8 +187,8 @@ def evade(parent, triggered: list) -> Tuple[float, float]:
     threat, so instead we compute the away-direction as its own angle and
     move forward into it, mirroring how separation() does it.)
     """
-    threat = max(triggered, key=lambda d: d['strength'])
-    threat_pos = np.array(threat['position'])
+    threat = max(triggered, key=lambda d: d.strength)
+    threat_pos = np.array(threat.position)
 
     away_delta = parent.position - threat_pos
     distance = np.linalg.norm(away_delta)
@@ -193,8 +206,8 @@ def evade(parent, triggered: list) -> Tuple[float, float]:
 
 def orbit(parent, triggered: list, radius: float = 100.0) -> Tuple[float, float]:
     """Circle around the strongest detected object at a fixed distance."""
-    target = max(triggered, key=lambda d: d['strength'])
-    target_pos = np.array(target['position'])
+    target = max(triggered, key=lambda d: d.strength)
+    target_pos = np.array(target.position)
     distance = np.linalg.norm(target_pos - parent.position)
 
     target_angle = get_facing_angle(parent.position, target_pos)
@@ -224,8 +237,8 @@ def arrive(parent, triggered: list, slow_radius: float = 100.0) -> Tuple[float, 
     BaseObject.accelerate), so tapering toward 0 is enough to coast to a
     stop; no separate braking/reverse term needed.
     """
-    target = max(triggered, key=lambda d: d['strength'])
-    target_pos = np.array(target['position'])
+    target = max(triggered, key=lambda d: d.strength)
+    target_pos = np.array(target.position)
 
     target_angle = get_facing_angle(parent.position, target_pos)
     parent.heading.cast_as_radians()
@@ -242,21 +255,19 @@ def pursuit(parent, triggered: list, lookahead: float = 1.0) -> Tuple[float, flo
     """
     Nature of Code's "pursuit": seek where the strongest detection is
     HEADING, not where it currently is. Extrapolates the target's position
-    forward by its own current heading/speed (same conversion `move()`
-    uses internally), then steers toward that predicted point exactly like
-    `approach` steers toward a static one.
+    forward by its estimated heading/speed, then steers toward that
+    predicted point exactly like `approach` steers toward a static one.
 
-    Falls back to the target's current position if `triggered` didn't
-    carry a live object reference (older/plain detections), or if the
-    target isn't moving -- there's nothing to predict.
+    Falls back to the target's current position while the detection carries
+    no velocity/heading estimate. TODO: detections gain these once
+    estimation is implemented.
     """
-    target = max(triggered, key=lambda d: d['strength'])
-    target_obj = target.get('object')
+    target = max(triggered, key=lambda d: d.strength)
 
-    target_pos = np.array(target['position'])
-    if target_obj is not None and getattr(target_obj, 'velocity', 0.0):
-        target_obj.heading.cast_as_radians()
-        predicted_delta = angular_motion_to_cartesian(target_obj.heading, target_obj.velocity * lookahead)
+    target_pos = np.array(target.position)
+    if target.velocity and target.heading is not None:
+        target.heading.cast_as_radians()
+        predicted_delta = angular_motion_to_cartesian(target.heading, target.velocity * lookahead)
         target_pos = target_pos + predicted_delta
 
     target_angle = get_facing_angle(parent.position, target_pos)
@@ -282,7 +293,7 @@ def separation(parent, triggered: list, strength: float = 0.5) -> Tuple[float, f
     count = 0
 
     for d in triggered:
-        away = parent.position - np.array(d['position'])
+        away = parent.position - np.array(d.position)
         distance = np.linalg.norm(away)
         if distance > 1e-6:
             push += (away / distance) / distance  # unit vector, weighted by 1/distance
@@ -311,8 +322,10 @@ def flock(parent, triggered: list, align_weight: float = 1.0, cohesion_weight: f
     pairs its condition with same_type() so a vehicle only flocks with its own kind.
 
     (cohesion: direction to the neighbors' centroid; alignment: avg of neighbors heading vectors)
+
+    TODO: alignment is inactive until detections carry an estimated heading.
     """
-    positions = np.array([d['position'] for d in triggered])
+    positions = np.array([d.position for d in triggered])
     centroid = positions.mean(axis=0)
 
     cohesion_delta = centroid - parent.position
@@ -321,10 +334,9 @@ def flock(parent, triggered: list, align_weight: float = 1.0, cohesion_weight: f
 
     heading_vectors = []
     for d in triggered:
-        neighbor = d.get('object')
-        if neighbor is not None:
-            neighbor.heading.cast_as_radians()
-            heading_vectors.append(angular_motion_to_cartesian(neighbor.heading, 1.0))
+        if d.heading is not None:
+            d.heading.cast_as_radians()
+            heading_vectors.append(angular_motion_to_cartesian(d.heading, 1.0))
 
     if heading_vectors:
         align_vector = np.mean(heading_vectors, axis=0)
@@ -410,8 +422,8 @@ def _default_fallbacks() -> List[Behavior]:
     """
     Tried, in order, only when no custom behavior fired this tick:
     "avoid_edges" first (steers back toward the world's center whenever the
-    vehicle is near a boundary), then "wander" (idle drift) as the last
-    resort once even avoid_edges doesn't apply.
+    vehicle is near a boundary), then "wander" (idle drift) as the last resort
+    once even avoid_edges doesn't apply.
     """
     return [
         Behavior(name="avoid_edges", condition=near_edge(), action=avoid_edges),

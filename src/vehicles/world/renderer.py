@@ -3,19 +3,23 @@ The simulation view.
 Pure visualizer: depends only on WorldState snapshots and pygame.
 No knowledge of physics, sensors, or Braitenberg logic.
 """
-import pygame
-import numpy as np
 from typing import Any, Protocol
+
+import numpy as np
+import pygame
+
 from vehicles.world.state import WorldState
 
 
 class DrawableEntity(Protocol):
     """Minimal interface expected from any simulated entity."""
+
     def __getattr__(self, name: str) -> Any: ...
 
 
 class Renderer:
     """Draws `WorldState` snapshots to a pygame window."""
+
     def __init__(
             self,
             width: int = 800,
@@ -36,19 +40,23 @@ class Renderer:
     def render(self, state: WorldState) -> None:
         """Clear the screen, draw every entity, then present the frame."""
         self.screen.fill(self.background)
+        # main_surface = pygame.Surface((self.width, self.height), pygame.SRCALPHA)
+
+        for terrain in state.terrain:
+            self._draw_terrain(terrain)
 
         for entity in state.entities:
             self._draw_entity(entity)
-            if entity.sense_poly is not None:
-                self._draw_senses(entity)
-                # self._draw_bounds(entity)
 
             if self.verbose:
+                if entity.sense_poly is not None:
+                    self._draw_senses(entity)
+                    self._draw_bounds(entity)
                 if entity.hunger is not None:
-                    self._draw_stat_bar(entity, entity.hunger, 100, pygame.Color(255, 0, 0, 60))
+                    self._draw_stat_bar(entity, entity.hunger, 100, pygame.Color(255, 0, 0, 30))
                 if entity.food is not None and entity.max_food is not None:
-                    self._draw_stat_bar(entity, entity.food, entity.max_food, pygame.Color(0, 200, 0, 60))
-                self._draw_stat_bar(entity, entity.health, entity.max_health, pygame.Color(0, 200, 0, 60), row=1)
+                    self._draw_stat_bar(entity, entity.food, entity.max_food, pygame.Color(0, 200, 0, 30))
+                self._draw_stat_bar(entity, entity.health, entity.max_health, pygame.Color(0, 200, 0, 30), row=1)
                 if entity.active_behavior:
                     self._draw_behavior_label(entity)
 
@@ -57,6 +65,21 @@ class Renderer:
     def _translate_to_pygame_coords(self, x_value, y_value):
 
         return x_value, self.height - y_value
+
+    def _draw_terrain(self, terrain) -> None:
+        """Draw one terrain region: a filled polygon, or a thick polyline with rounded joints."""
+        color = pygame.Color(terrain.color)
+        points = [tuple(int(v) for v in self._translate_to_pygame_coords(x, y)) for x, y in terrain.points]
+
+        if terrain.closed:
+            pygame.draw.polygon(self.screen, color, points)
+            return
+
+        width = max(int(terrain.thickness), 1)
+        for start, end in zip(points[:-1], points[1:]):
+            pygame.draw.line(self.screen, color, start, end, width)
+        for point in points:
+            pygame.draw.circle(self.screen, color, point, width // 2)
 
     def _draw_entity(self, entity: DrawableEntity) -> None:
         """Draw one entity's body (its own silhouette if it has one, else a
@@ -68,8 +91,7 @@ class Renderer:
                                                               entity.facing_point[1]
                                                               )
 
-        # Colliding always wins, regardless of the entity's own color --
-        # it's a transient alert, not part of its identity
+        # Colliding flashes color- regardless of the entity's own state - it's a transient alert
         body_color = pygame.Color("orangered") if getattr(entity, "is_colliding", False) \
             else pygame.Color(getattr(entity, "color", "steelblue"))
 
@@ -94,17 +116,23 @@ class Renderer:
         """Draw one entity as a body circle with a line marking its facing."""
         vertices = entity.sense_poly
         # Pygame expects list of (x, y) tuples
+
         polygon_points = [self._translate_to_pygame_coords(int(x), int(y)) for x, y in vertices]
 
-        color = pygame.Color(255, 0, 0, 32) if entity.has_detections else pygame.Color(0, 255, 100, 32)
-        pygame.draw.polygon(self.screen, color, polygon_points, 2)  # width=2 for outline
+        color = pygame.Color(255, 0, 0, a=10) if entity.has_detections else pygame.Color(0, 255, 100, a=10)
+        pygame.draw.polygon(self.screen, color, polygon_points, 2)
 
-    def _draw_stat_bar(self, entity: DrawableEntity, value: float, max_value: float, color: pygame.Color, row: int = 0) -> None:
+    def _draw_stat_bar(self,
+                       entity: DrawableEntity,
+                       value: float,
+                       max_value: float,
+                       color: pygame.Color,
+                       row: int = 0) -> None:
         """
-        Draws a low-alpha fill bar just right of entity.position, sized by
-        value/max_value. `row` stacks multiple bars on the same entity
-        (0 = level with position, 1 = one bar-height below, ...) so e.g.
-        hunger and health don't draw on top of each other.
+        Draws a low-alpha fill bar just right of entity.position, sized by value/max_value.
+
+        `row` stacks multiple bars on the same entity (0 = level with position, 1 = one bar-height below, ...)
+        so e.g. hunger and health don't draw on top of each other
         """
         if max_value <= 0:
             return

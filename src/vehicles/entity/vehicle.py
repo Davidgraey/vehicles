@@ -3,6 +3,7 @@ from typing import Optional
 from vehicles.entity.base_object import BaseObject
 from vehicles.entity.angles import Angle, AngularType
 from vehicles.entity.senses import SensorType, SensorShape, Sense
+from vehicles.entity.observation import Observation
 from vehicles.entity.behaviors.instinct import Instinct
 
 
@@ -28,7 +29,8 @@ class Vehicle(BaseObject):
         self.sense = sense
         self.is_controlled = is_controlled
         self.instinct = instinct  # Optional behavior system
-        self.detected_objects = []  # List of detected object positions
+        self.observation: Optional[Observation] = None
+        self.last_action: tuple[float, float] = (0.0, 0.0)
 
         self.hunger = 0.0
         self.metabolism = metabolism
@@ -36,25 +38,19 @@ class Vehicle(BaseObject):
         self.starvation_threshold = starvation_threshold
         self.starvation_rate = starvation_rate
 
-    def perceive(self, instance_objects: list):
-        """ Call sense.perceive and track detected objects """
-        detected, strength = self.sense.perceive(self, instance_objects)
+    def observe(self, observation: Observation) -> None:
+        """Receive this tick's observation from the world."""
+        self.observation = observation
 
-        other_objects = [obj for obj in instance_objects if obj != self]
-        self.detected_objects = []
+    @property
+    def detected_objects(self) -> tuple:
+        """Detections from the latest observation."""
+        return self.observation.detections if self.observation else ()
 
-        if len(detected) > 0:
-            for idx, is_detected in enumerate(detected):
-                if is_detected and idx < len(other_objects):
-                    self.detected_objects.append({
-                        'position': tuple(other_objects[idx].position),
-                        'strength': float(strength[idx]),
-                        'object': other_objects[idx],  # live ref -- lets an action
-                                                        # read the target's own
-                                                        # velocity/heading (e.g. pursuit)
-                    })
-
-        return detected, strength
+    @property
+    def detected_terrain(self) -> tuple:
+        """Terrain detections from the latest observation."""
+        return self.observation.terrain if self.observation else ()
 
     def apply_motor_commands(self, turn: float = 0.0, accelerate: float = 0.0) -> None:
         """
@@ -65,6 +61,7 @@ class Vehicle(BaseObject):
         if not self.is_controlled:
             turn, accelerate = self.instinct.evaluate(self, self.detected_objects) if self.instinct else (0.0, 0.0)
 
+        self.last_action = (float(turn), float(accelerate))
         self.turn(Angle(AngularType.RADIANS, turn))
         self.accelerate(accelerate)
         self.hunger = self.hunger + self.metabolism
@@ -184,6 +181,14 @@ class Vehicle(BaseObject):
 
 if __name__ == "__main__":
     import matplotlib.pyplot as plt
+    from vehicles.entity.angles import relative_geometry
+
+    def detect_alone(vehicle, others):
+        targets = np.array([o.position for o in others], dtype=np.float64)
+        origin = vehicle.position.astype(np.float64)[None, :]
+        heading = np.array([vehicle.heading.to_radians()], dtype=np.float64)
+        distances, relative_angles = relative_geometry(origin, heading, targets)
+        return vehicle.sense.detect(distances[0], relative_angles[0])[0]
 
     positions = []
     pointers = []
@@ -218,7 +223,7 @@ if __name__ == "__main__":
     positions.append(ent.position.copy())
     pointers.append(ent.facing_point.copy())
     bounding_boxes.append(ent.bounding_box.copy())
-    seen_states = [ent.perceive(in_world)]
+    seen_states = [detect_alone(ent, in_world)]
 
     # Turn & move animation loop
     for i in range(18):
@@ -239,7 +244,7 @@ if __name__ == "__main__":
         positions.append(ent.position.copy())
         pointers.append(ent.facing_point.copy())
         bounding_boxes.append(ent.bounding_box.copy())
-        seen_states.append(ent.perceive(in_world))
+        seen_states.append(detect_alone(ent, in_world))
 
         print(f"Step {i}: pos={ent.position}, facing_point={ent.facing_point}, "
               f"heading={ent.heading.value:.4f} rad ({ent.direction.value:.2f}°)")
@@ -267,7 +272,7 @@ if __name__ == "__main__":
         for e_idx, _ob in enumerate(in_world):
             c = ["red", "purple"]
             ep = _ob.position
-            if seen[0][e_idx]:
+            if seen[e_idx]:
                 plt.scatter(ep[0], ep[1], color=c[e_idx], s=35, alpha=1.0)
 
         # Draw bounding box corners

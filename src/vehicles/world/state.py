@@ -33,9 +33,28 @@ class EntityState:
 
 
 @dataclass(frozen=True)
+class TerrainState:
+    """
+    Immutable description of one terrain region.
+
+    Parameters
+    ----------
+    color : draw color
+    points : (x, y) points of a closed boundary, or of a polyline
+    thickness : stroke width of a polyline; 0 for a closed region
+    closed : True when `points` is a closed boundary
+    """
+    color: str
+    points: Tuple[Tuple[float, float], ...]
+    thickness: float = 0.0
+    closed: bool = True
+
+
+@dataclass(frozen=True)
 class WorldState:
     """Immutable snapshot of the whole world at one tick."""
     tick: int
     width: int
     height: int
     entities: Tuple[EntityState, ...]
+    terrain: Tuple[TerrainState, ...] = ()

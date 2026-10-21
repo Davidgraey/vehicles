@@ -166,6 +166,28 @@ def calculate_relative_angle(sensor_heading: Angle, target_angle: Angle) -> Angl
     return normalize_angle(sensor_heading - target_angle)
 
 
+def relative_geometry(origins: np.ndarray, headings: np.ndarray, targets: np.ndarray) -> tuple[np.ndarray, np.ndarray]:
+    """
+    Pairwise distances and relative angles from each origin to each target.
+
+    Parameters
+    ----------
+    origins : (N, 2)
+    headings : (N,) radians
+    targets : (M, 2)
+
+    Returns
+    -------
+    distances : (N, M)
+    relative_angles : (N, M) signed angle from each origin's heading to each target, radians
+    """
+    deltas = targets[None, :, :] - origins[:, None, :]
+    distances = np.linalg.norm(deltas, axis=-1)
+    bearings = np.arctan2(deltas[..., 0], deltas[..., 1])
+    relative_angles = (headings[:, None] - bearings + np.pi) % (2 * np.pi) - np.pi
+    return distances, relative_angles
+
+
 if __name__ == "__main__":
     a = Angle(type=AngularType.DEGREES, value = 194.3)
     b = Angle(type=AngularType.RADIANS, value=2)

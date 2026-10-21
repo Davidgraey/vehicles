@@ -68,11 +68,11 @@ class BaseObject:
         # Constantly Updated Variables
         self.heading = get_facing_angle(self.position, self.facing_point)
         self.heading.cast_as_radians()
-        self.colliding: list = []  # other BaseObjects currently touching this one
+        # other BaseObjects currently touching this one
+        self.colliding: list = []
 
         # Appearance -- generic so the renderer never needs isinstance checks.
-        # A subclass (see entity/species.py's Fish) overrides these after
-        # calling super().__init__() to get its own look.
+        # A subclass can overwrite the color. easy.
         self.color: str = "steelblue"
 
     # ------------------------ MOVEMENT ------------------------
@@ -139,6 +139,7 @@ class BaseObject:
             [cos_theta, -sin_theta],
             [sin_theta, cos_theta]
         ])
+
         # Calculate corners of the rect based on center/position and size
         rect = np.array(
             [
@@ -167,14 +168,14 @@ class BaseObject:
 
     def _get_body_render(self) -> np.ndarray | None:
         """
-        Optional custom body silhouette for the renderer to draw instead of
-        the default circle. None (the default here) means "just draw the
-        plain circle" -- override in a subclass to return an Nx2 array of
-        world-space polygon vertices instead. Build it the same way
-        Vehicle._get_sensor_render() builds the sense cone: local offsets
-        (forward = +y) rotated by heading using the renderer's y-flip
-        convention (heading_rad = -self.heading.value), then translated by
-        self.position.
+        Optional custom body silhouette for the renderer to draw instead of the default circle.
+
+        None (the default here) means "just draw the plain circle" -- override in a subclass to return an Nx2 array of
+            world-space polygon vertices instead.
+
+        Build it the same way Vehicle._get_sensor_render() builds the sense cone:
+            local offsets (forward = +y) rotated by heading using the renderer's y-flip convention (heading_rad = -self.heading.value)
+            then translated by self.position.
         """
         return None
 
@@ -209,7 +210,9 @@ class BaseObject:
             Amount of health actually lost.
         """
         lost = min(amount, self.health)
+
         self.health -= lost
+
         return lost
 
     def __repr__(self):
